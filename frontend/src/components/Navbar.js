@@ -1,3 +1,4 @@
+// src/components/Navbar.js
 import { useContext } from "react";
 import AuthContext from "../context/AuthContext";
 import { Link } from "react-router-dom";
@@ -19,7 +20,7 @@ const Navbar = () => {
       {/* Left Side: Title and Navigation Links */}
       <div>
         <strong style={{ marginRight: "20px", fontSize: "1.2rem" }}>
-          Group 4a Provider Tool
+          Group 4a Tool
         </strong>
 
         <Link
@@ -43,6 +44,19 @@ const Navbar = () => {
         >
           Requests
         </Link>
+
+        {/* --- THIS IS THE NEW LINK --- */}
+        <Link
+          to="/contracts"
+          style={{
+            color: "white",
+            marginRight: "15px",
+            textDecoration: "none",
+          }}
+        >
+          Contracts
+        </Link>
+        {/* ---------------------------- */}
 
         <Link to="/profile" style={{ color: "white", textDecoration: "none" }}>
           Profile
