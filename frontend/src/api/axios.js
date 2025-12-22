@@ -1,31 +1,25 @@
 import axios from "axios";
 
-// 1. Define the base URL of your Django Backend
-// Standard Django local development runs on port 8000
-const BASE_URL = "http://localhost:8000/api";
-
-// 2. Create the Axios instance
+// 1. Create the API client
 const api = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
+  baseURL: "http://192.168.178.68:8000/api/", // Make sure this matches your Django URL
+});
+
+// 2. The "Interceptor" - Runs before every request
+api.interceptors.request.use(
+  (config) => {
+    // Grab the token we saved during Login
+    const token = localStorage.getItem("access");
+
+    // If we have a token, attach it to the header
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
   },
-});
-
-// 3. Add an interceptor to attach tokens automatically
-// This helps if you are using JWT tokens later in the project
-api.interceptors.request.use((config) => {
-  // Check if there is a token in local storage
-  const authTokens = localStorage.getItem("authTokens")
-    ? JSON.parse(localStorage.getItem("authTokens"))
-    : null;
-
-  // If token exists, add it to the Authorization header
-  if (authTokens?.access) {
-    config.headers.Authorization = `Bearer ${authTokens.access}`;
+  (error) => {
+    return Promise.reject(error);
   }
-
-  return config;
-});
+);
 
 export default api;

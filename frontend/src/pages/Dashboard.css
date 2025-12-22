@@ -1,0 +1,262 @@
+/* Layout Wrapper */
+.dashboard-wrapper {
+  background-color: #f8f9fa;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-container {
+  max-width: 1200px;
+  margin: 30px auto;
+  padding: 0 20px;
+  flex: 1;
+  font-family: "Inter", sans-serif;
+}
+
+/* Header */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+.dashboard-header h1 {
+  font-size: 28px;
+  color: #111827;
+  margin: 0;
+}
+.subtitle {
+  color: #6b7280;
+  margin-top: 5px;
+  font-size: 14px;
+}
+.btn-report {
+  background: white;
+  border: 1px solid #d1d5db;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #374151;
+  transition: all 0.2s;
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+}
+.stat-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eee;
+}
+.stat-card h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+.trend {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #ecfdf5;
+  color: #059669;
+}
+.trend.alert {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Content Grid */
+.dashboard-content-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+.section-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  margin-bottom: 24px;
+}
+.section-card h3 {
+  margin-top: 0;
+  color: #1f2937;
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+
+/* Buttons & Lists */
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.btn-action {
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 1;
+  white-space: nowrap;
+} /* nowrap prevents text breaking */
+.btn-action.primary {
+  background: #2563eb;
+  color: white;
+}
+.btn-action.secondary {
+  background: #f3f4f6;
+  color: #374151;
+}
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid #f9fafb;
+}
+.activity-item:last-child {
+  border-bottom: none;
+}
+.icon {
+  margin-right: 15px;
+  font-weight: bold;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.icon.success {
+  background: #dcfce7;
+  color: #166534;
+}
+.icon.info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.icon.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+.time {
+  margin-left: auto;
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+/* Policy List */
+.policy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.policy-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.policy-icon {
+  color: #4b5563;
+  font-size: 18px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+.download-icon {
+  color: #9ca3af;
+  margin-left: auto;
+  font-size: 14px;
+}
+.btn-compliance {
+  width: 100%;
+  margin-top: 20px;
+  padding: 10px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+/* Footer */
+.dashboard-footer {
+  background: white;
+  border-top: 1px solid #eee;
+  padding: 20px 0;
+  margin-top: 40px;
+}
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #6b7280;
+}
+.footer-links span {
+  margin-left: 20px;
+  cursor: pointer;
+}
+
+/* 👇👇 MOBILE RESPONSIVE MAGIC START HERE 👇👇 */
+@media (max-width: 768px) {
+  /* Stack the Header vertically */
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+  .header-actions {
+    width: 100%;
+  }
+  .btn-report {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Make grid 1 column for mobile */
+  .dashboard-content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Adjust Stats Grid to be full width on very small screens */
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stack Footer vertically */
+  .footer-content {
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    text-align: center;
+  }
+  .footer-links span {
+    margin: 0 10px;
+  } /* Add spacing between links */
+}

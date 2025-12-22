@@ -1,40 +1,44 @@
-// src/App.js
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
-import { ToastContainer } from "react-toastify"; // <--- Import Toast Logic
-import "react-toastify/dist/ReactToastify.css"; // <--- Import Toast CSS
-
-// Import Pages
-import LoginPage from "./pages/LoginPage";
+import React from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import Login from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
 import ServiceRequests from "./pages/ServiceRequests";
-import Contracts from "./pages/Contracts"; // <--- Import Sprint 3 Placeholder
-
-// Import Components
-import PrivateRoute from "./components/PrivateRoute";
-
+import Contracts from "./pages/Contracts";
+import Profile from "./pages/Profile";
+import Team from "./pages/Team";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import "./App.css";
+import Policies from "./pages/Policies";
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        {/* Global Notification Container (Popups appear here) */}
+      <div className="App">
+        {/* ToastContainer allows pop-up messages to work everywhere */}
         <ToastContainer position="top-right" autoClose={3000} />
 
         <Routes>
           {/* Public Route */}
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<Login />} />
 
-          {/* Protected Routes (Must be logged in) */}
-          <Route element={<PrivateRoute />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/requests" element={<ServiceRequests />} />
-            <Route path="/contracts" element={<Contracts />} />{" "}
-            {/* <--- New Route */}
-          </Route>
+          {/* Protected Routes (Pages with Navbar) */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/requests" element={<ServiceRequests />} />
+          <Route path="/contracts" element={<Contracts />} />
+          <Route path="/profile" element={<Profile />} />
+          {/* <--- NEW: Add the route here */}
+          {/* <Route path="/team" element={<Team />} />*/}
+          <Route path="/experts" element={<Team />} />
+          {/* Catch-all: Redirect any unknown URL to Login */}
+          <Route path="*" element={<Navigate to="/" />} />
+          <Route path="/policies" element={<Policies />} />
         </Routes>
-      </AuthProvider>
+      </div>
     </Router>
   );
 }

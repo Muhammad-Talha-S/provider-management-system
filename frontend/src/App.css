@@ -1,3 +1,4 @@
+/*
 .App {
   text-align: center;
 }
@@ -35,4 +36,40 @@
   to {
     transform: rotate(360deg);
   }
+}
+*/
+/* App.css - Global Corporate Theme */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  --primary: #2563eb; /* Corporate Blue */
+  --secondary: #1e293b; /* Dark Slate */
+  --bg-color: #f3f4f6; /* Light Gray Background */
+  --white: #ffffff;
+  --text-dark: #1f2937;
+  --text-gray: #6b7280;
+  --success: #10b981;
+  --border: #e5e7eb;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-color);
+  font-family: "Inter", sans-serif; /* Professional Font */
+  color: var(--text-dark);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 700;
+  color: var(--secondary);
+  margin-top: 0;
+}
+
+button {
+  cursor: pointer;
+  transition: all 0.2s ease;
 }

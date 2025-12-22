@@ -1,44 +1,52 @@
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
-import api from "../api/axios"; // <--- Connects to Django
+import api from "../api/axios";
 import { toast } from "react-toastify";
 import "./Contracts.css";
 
 const Contracts = () => {
   const [contracts, setContracts] = useState([]);
 
-  // 1. Fetch Real Contracts from Database
-  useEffect(() => {
-    const fetchContracts = async () => {
-      try {
-        const response = await api.get("/contracts/");
-        setContracts(response.data);
-      } catch (error) {
-        console.error("Error fetching contracts:", error);
-        toast.error("Could not load contracts.");
-      }
-    };
+  // Modal State
+  const [selectedContract, setSelectedContract] = useState(null);
+  const [proposalText, setProposalText] = useState("");
 
+  useEffect(() => {
     fetchContracts();
   }, []);
 
-  // 2. Handle Signing (Connects to Backend -> Group 2)
-  const handleSignContract = async (id) => {
+  const fetchContracts = async () => {
     try {
-      // Call the Django Endpoint
-      await api.post(`/contracts/${id}/sign/`);
-
-      toast.success("Contract Signed! Notified Group 2. ✍️");
-
-      // Update UI locally
-      setContracts(
-        contracts.map((contract) =>
-          contract.id === id ? { ...contract, status: "Signed" } : contract
-        )
-      );
+      const res = await api.get("/contracts/");
+      setContracts(res.data);
     } catch (error) {
-      console.error("Error signing contract:", error);
-      toast.error("Failed to sign contract.");
+      console.error(error);
+    }
+  };
+
+  const handleSign = async (id) => {
+    try {
+      await api.post(`/sign-contract/${id}/`);
+      toast.success("✍️ Contract Signed!");
+      fetchContracts(); // Reload list
+    } catch (error) {
+      toast.error("Failed to sign.");
+    }
+  };
+
+  const handleNegotiateSubmit = async () => {
+    if (!proposalText) return toast.warning("Please type your changes.");
+
+    try {
+      await api.post(`/negotiate-contract/${selectedContract.id}/`, {
+        proposal: proposalText,
+      });
+      toast.info("🔄 Counter-offer sent to Group 2!");
+      setSelectedContract(null); // Close modal
+      setProposalText("");
+      fetchContracts(); // Reload list
+    } catch (error) {
+      toast.error("Failed to send counter-offer.");
     }
   };
 
@@ -47,48 +55,92 @@ const Contracts = () => {
       <Navbar />
       <div className="contracts-container">
         <h1>Contract Management</h1>
-        <p>Review and manage legal agreements with Group 2 (Contract Tool).</p>
+        <p className="subtitle">Review, Sign, or Negotiate legal agreements.</p>
 
-        <div className="contracts-list">
-          {contracts.length === 0 ? (
-            <p>No pending contracts available.</p>
-          ) : (
-            contracts.map((contract) => (
-              <div key={contract.id} className="contract-card">
-                <div className="contract-header">
-                  <h3>{contract.title}</h3>
-                  <span
-                    className={`status-badge status-${contract.status.toLowerCase()}`}
-                  >
-                    {contract.status}
-                  </span>
-                </div>
-                <div className="contract-body">
-                  <p>
-                    <strong>Client:</strong> {contract.client_name}
-                  </p>
-                  <p>
-                    <strong>Date:</strong> {contract.date}
-                  </p>
-                </div>
-                <div className="contract-footer">
-                  {contract.status === "Pending" ? (
+        <div className="contract-list">
+          {contracts.map((contract) => (
+            <div
+              key={contract.id}
+              className={`contract-card ${contract.status.toLowerCase()}`}
+            >
+              <div className="card-header">
+                <h3>📄 {contract.title}</h3>
+                <span
+                  className={`status-badge ${contract.status.toLowerCase()}`}
+                >
+                  {contract.status}
+                </span>
+              </div>
+
+              <p>
+                <strong>Client:</strong> {contract.client_name}
+              </p>
+              <p>
+                <strong>Date:</strong> {contract.date}
+              </p>
+
+              {/* Logic for Buttons */}
+              <div className="card-actions">
+                {contract.status === "Pending" && (
+                  <>
+                    <button
+                      className="btn-negotiate"
+                      onClick={() => setSelectedContract(contract)}
+                    >
+                      Modify / Counter-Offer
+                    </button>
                     <button
                       className="btn-sign"
-                      onClick={() => handleSignContract(contract.id)}
+                      onClick={() => handleSign(contract.id)}
                     >
-                      Sign Contract
+                      Sign Agreement
                     </button>
-                  ) : (
-                    <button className="btn-disabled" disabled>
-                      Signed & Active
-                    </button>
-                  )}
-                </div>
+                  </>
+                )}
+
+                {contract.status === "Negotiation" && (
+                  <p className="wait-msg">⏳ Waiting for Client Response...</p>
+                )}
+
+                {contract.status === "Signed" && (
+                  <p className="success-msg">✅ Legally Binding</p>
+                )}
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
+
+        {/* --- NEGOTIATION MODAL --- */}
+        {selectedContract && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2>Negotiate: {selectedContract.title}</h2>
+              <p>
+                Describe the changes you require (e.g., price, date, scope).
+              </p>
+
+              <textarea
+                className="input-field"
+                rows="5"
+                placeholder="Example: We require a rate of €95/hr instead of €85..."
+                value={proposalText}
+                onChange={(e) => setProposalText(e.target.value)}
+              />
+
+              <div className="modal-actions">
+                <button
+                  className="btn-cancel"
+                  onClick={() => setSelectedContract(null)}
+                >
+                  Cancel
+                </button>
+                <button className="btn-submit" onClick={handleNegotiateSubmit}>
+                  Send Counter-Offer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

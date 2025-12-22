@@ -1,147 +1,243 @@
-// src/pages/Dashboard.js
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
-import { Link } from "react-router-dom";
+import api from "../api/axios";
+import { useNavigate } from "react-router-dom";
+import {
+  FaFileContract,
+  FaShieldAlt,
+  FaBalanceScale,
+  FaDownload,
+} from "react-icons/fa";
+import "./Dashboard.css";
 
 const Dashboard = () => {
-  // Hardcoded Stats (In real app, fetch these from API)
-  const stats = {
-    earnings: "€ 12,450",
-    activeJobs: 3,
-    pendingRequests: 5,
-    rating: "4.8/5",
-  };
+  const navigate = useNavigate();
+
+  // State
+  const [stats, setStats] = useState({
+    total_earnings: 0,
+    active_contracts: 0,
+    pending_requests: 0,
+    client_rating: 4.8,
+  });
+  const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState("");
+
+  // Fetch Data & Set Date
+  useEffect(() => {
+    // Set Date (e.g., "Monday, 22 Dec 2025")
+    const date = new Date();
+    setCurrentDate(
+      date.toLocaleDateString("en-GB", {
+        weekday: "long",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    );
+
+    const fetchStats = async () => {
+      try {
+        const res = await api.get("/dashboard-stats/");
+        setStats(res.data);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  if (loading) {
+    return (
+      <div>
+        <Navbar />
+        <div className="loading-screen">
+          <h2>⏳ Loading Analytics...</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ backgroundColor: "#f4f7f6", minHeight: "100vh" }}>
+    <div className="dashboard-wrapper">
       <Navbar />
 
-      <div style={{ padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
-        <h1 style={{ color: "#333" }}>Provider Dashboard</h1>
-        <p style={{ color: "#666", marginBottom: "30px" }}>
-          Welcome back! Here is your business overview.
-        </p>
-
-        {/* Top Cards Section */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "20px",
-            marginBottom: "40px",
-          }}
-        >
-          <DashboardCard
-            title="Total Earnings"
-            value={stats.earnings}
-            color="#28a745"
-          />
-          <DashboardCard
-            title="Active Jobs"
-            value={stats.activeJobs}
-            color="#17a2b8"
-          />
-          <DashboardCard
-            title="Pending Requests"
-            value={stats.pendingRequests}
-            color="#ffc107"
-          />
-          <DashboardCard
-            title="Client Rating"
-            value={stats.rating}
-            color="#6c757d"
-          />
+      <div className="dashboard-container">
+        {/* --- HEADER --- */}
+        <div className="dashboard-header">
+          <div>
+            <h1>Welcome back, Provider Management (Individual) 👋</h1>
+            <p className="subtitle">{currentDate} • Enterprise Portal</p>
+          </div>
+          <div className="header-actions">
+            <button className="btn-report">Download Monthly Report</button>
+          </div>
         </div>
 
-        {/* Quick Actions & Recent Activity */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr",
-            gap: "20px",
-          }}
-        >
-          {/* Main Area */}
-          <div
-            style={{
-              background: "white",
-              padding: "20px",
-              borderRadius: "8px",
-              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-            }}
-          >
-            <h2>Quick Actions</h2>
-            <div style={{ display: "flex", gap: "15px", marginTop: "15px" }}>
-              <Link to="/requests" style={actionBtnStyle}>
-                🔍 Find New Jobs
-              </Link>
-              <Link to="/contracts" style={actionBtnStyle}>
-                📝 Review Contracts
-              </Link>
-              <Link to="/profile" style={actionBtnStyle}>
-                ⚙️ Edit Profile
-              </Link>
+        {/* --- STATS CARDS --- */}
+        <div className="stats-grid">
+          <div className="stat-card blue">
+            <h3>Total Earnings</h3>
+            <p className="stat-value">
+              € {stats.total_earnings.toLocaleString()}
+            </p>
+            <span className="trend positive">↗ +12% this month</span>
+          </div>
+
+          <div className="stat-card green">
+            <h3>Active Contracts</h3>
+            <p className="stat-value">{stats.active_contracts}</p>
+            <span className="trend">Current Projects</span>
+          </div>
+
+          <div className="stat-card orange">
+            <h3>Pending Requests</h3>
+            <p className="stat-value">{stats.pending_requests}</p>
+            <span className="trend alert">Requires Attention</span>
+          </div>
+
+          <div className="stat-card purple">
+            <h3>Client Rating</h3>
+            <p className="stat-value">⭐ {stats.client_rating}/5</p>
+            <span className="trend">Top Rated Provider</span>
+          </div>
+        </div>
+
+        {/* --- MAIN CONTENT GRID --- */}
+        <div className="dashboard-content-grid">
+          {/* LEFT COLUMN: Quick Actions & Recent Activity */}
+          <div className="main-column">
+            <div className="section-card">
+              <h3>⚡ Quick Actions</h3>
+              <div className="action-buttons">
+                <button
+                  onClick={() => navigate("/requests")}
+                  className="btn-action primary"
+                >
+                  View Requests
+                </button>
+                <button
+                  onClick={() => navigate("/contracts")}
+                  className="btn-action primary"
+                >
+                  Sign Contracts
+                </button>
+                <button
+                  onClick={() => navigate("/profile")}
+                  className="btn-action secondary"
+                >
+                  Company Profile
+                </button>
+              </div>
+            </div>
+
+            <div className="section-card activity-feed">
+              <h3>📝 Recent Activity</h3>
+              <ul>
+                <li className="activity-item">
+                  <span className="icon success">✓</span>
+                  <div>
+                    <strong>Contract Signed</strong>
+                    <p>Agreement with FraUAS finalized.</p>
+                  </div>
+                  <span className="time">2h ago</span>
+                </li>
+                <li className="activity-item">
+                  <span className="icon info">ℹ</span>
+                  <div>
+                    <strong>New Request Received</strong>
+                    <p>IT Support request from Group 2.</p>
+                  </div>
+                  <span className="time">5h ago</span>
+                </li>
+                <li className="activity-item">
+                  <span className="icon warning">!</span>
+                  <div>
+                    <strong>Policy Update</strong>
+                    <p>New GDPR compliance rules added.</p>
+                  </div>
+                  <span className="time">1d ago</span>
+                </li>
+              </ul>
             </div>
           </div>
 
-          {/* Activity Feed */}
-          <div
-            style={{
-              background: "white",
-              padding: "20px",
-              borderRadius: "8px",
-              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-            }}
-          >
-            <h3>Recent Activity</h3>
-            <ul style={{ listStyle: "none", padding: 0, marginTop: "15px" }}>
-              <li style={activityItemStyle}>
-                ✅ Signed contract with Client A
-              </li>
-              <li style={activityItemStyle}>📩 New offer request received</li>
-              <li style={activityItemStyle}>💰 Payment of €4,000 received</li>
-              <li style={activityItemStyle}>⚠️ Profile incomplete</li>
-            </ul>
+          {/* RIGHT COLUMN: GOVERNANCE & POLICIES */}
+          <div className="side-column">
+            <div className="section-card compliance-card">
+              <h3>⚖️ Governance Center</h3>
+              <p className="section-desc">
+                Access company policies and legal terms.
+              </p>
+
+              <div className="policy-list">
+                {/* 1. Terms */}
+                <div
+                  className="policy-item"
+                  onClick={() => navigate("/policies")}
+                >
+                  <FaFileContract className="policy-icon" />
+                  <div>
+                    <strong>Terms & Conditions</strong>
+                    <p>Updated Dec 2025</p>
+                  </div>
+                  <FaDownload className="download-icon" />
+                </div>
+
+                {/* 2. Privacy Policy */}
+                <div
+                  className="policy-item"
+                  onClick={() => navigate("/policies")}
+                >
+                  <FaShieldAlt className="policy-icon" />
+                  <div>
+                    <strong>Privacy Policy</strong>
+                    <p>GDPR & Data Protection</p>
+                  </div>
+                  <FaDownload className="download-icon" />
+                </div>
+
+                {/* 3. SLA Guidelines */}
+                <div
+                  className="policy-item"
+                  onClick={() => navigate("/policies")}
+                >
+                  <FaBalanceScale className="policy-icon" />
+                  <div>
+                    <strong>SLA Guidelines</strong>
+                    <p>Service Level Standards</p>
+                  </div>
+                  <FaDownload className="download-icon" />
+                </div>
+              </div>
+
+              <button
+                className="btn-compliance"
+                onClick={() => navigate("/policies")}
+              >
+                View All Policies
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* --- FOOTER --- */}
+      <footer className="dashboard-footer">
+        <div className="footer-content">
+          <p>© 2025 Group 4a Solutions. All rights reserved.</p>
+          <div className="footer-links">
+            <span onClick={() => navigate("/policies")}>Terms of Service</span>
+            <span onClick={() => navigate("/policies")}>Privacy Policy</span>
+            <span>Support</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
-};
-
-// Simple Helper Components for styling
-const DashboardCard = ({ title, value, color }) => (
-  <div
-    style={{
-      background: "white",
-      padding: "20px",
-      borderRadius: "8px",
-      borderLeft: `5px solid ${color}`,
-      boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-    }}
-  >
-    <h3 style={{ margin: 0, fontSize: "14px", color: "#999" }}>{title}</h3>
-    <p style={{ margin: "10px 0 0", fontSize: "24px", fontWeight: "bold" }}>
-      {value}
-    </p>
-  </div>
-);
-
-const actionBtnStyle = {
-  padding: "12px 20px",
-  backgroundColor: "#007bff",
-  color: "white",
-  textDecoration: "none",
-  borderRadius: "5px",
-  fontWeight: "bold",
-  fontSize: "14px",
-};
-
-const activityItemStyle = {
-  padding: "10px 0",
-  borderBottom: "1px solid #eee",
-  fontSize: "14px",
-  color: "#555",
 };
 
 export default Dashboard;
