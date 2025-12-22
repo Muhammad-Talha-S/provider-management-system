@@ -1,48 +1,165 @@
-/* src/pages/LoginPage.css */
+/* Full Page Background */
 .login-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    background-color: #f4f7f6;
+  min-height: 100vh; /* changed from height to min-height to prevent cutoff */
+  width: 100vw;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: url("https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=1920&auto=format&fit=crop")
+    no-repeat center center/cover;
+  position: relative;
+  font-family: "Inter", sans-serif;
+  padding: 20px; /* Adds safe space on mobile edges */
+  box-sizing: border-box;
+}
+
+.login-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1;
 }
 
 .login-card {
-    background: white;
-    padding: 40px;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
+  position: relative;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 40px 30px; /* Reduced side padding slightly */
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+
+  /* 👇 RESPONSIVE FIX 👇 */
+  width: 100%;
+  max-width: 400px; /* Stops it getting too big on desktop */
+
+  text-align: center;
+  animation: slideUp 0.8s ease-out;
 }
 
-.login-card h2 {
-    margin-bottom: 20px;
-    color: #333;
+/* ... (Keep your Logo, Text, Input, Button styles the same) ... */
+.brand-logo {
+  font-size: 48px;
+  margin-bottom: 10px;
+}
+.login-card h1 {
+  color: #111827;
+  margin-bottom: 5px;
+  font-size: 26px;
+  font-weight: 800;
+}
+.subtitle {
+  color: #6b7280;
+  margin-bottom: 30px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.input-group {
+  text-align: left;
+  margin-bottom: 20px;
+}
+.input-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #4b5563;
+  margin-bottom: 6px;
+}
+.input-group input {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 15px;
+  background: #f9fafb;
+  box-sizing: border-box;
+}
+.input-group input:focus {
+  border-color: #2563eb;
+  background: #ffffff;
+  outline: none;
+}
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 10px;
+}
+.password-wrapper {
+  position: relative;
+  width: 100%;
+}
+.password-wrapper input {
+  width: 100%;
+  padding-right: 40px;
+}
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+}
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: #4b5563;
+}
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.checkbox-container input {
+  margin-right: 8px;
+}
+.forgot-password {
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+}
+.footer-text {
+  margin-top: 25px;
+  font-size: 12px;
+  color: #9ca3af;
 }
 
-.login-card input {
-    width: 100%;
-    padding: 12px;
-    margin: 10px 0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    box-sizing: border-box; /* Ensures padding doesn't break width */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.login-card button {
-    width: 100%;
-    padding: 12px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 16px;
-    cursor: pointer;
-    margin-top: 10px;
-}
-
-.login-card button:hover {
-    background-color: #0056b3;
+/* 👇 EXTRA MOBILE TWEAKS 👇 */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 30px 20px;
+  } /* Less padding on small screens */
+  .brand-logo {
+    font-size: 40px;
+  }
+  .login-card h1 {
+    font-size: 22px;
+  }
 }

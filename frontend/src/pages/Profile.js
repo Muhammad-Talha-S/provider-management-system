@@ -1,155 +1,274 @@
-// src/pages/Profile.js
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
-import "./Profile.css"; // <--- The Styling Import
+import { toast } from "react-toastify";
+import "./Profile.css";
 
 const Profile = () => {
-  // State to hold profile data
-  const [profile, setProfile] = useState({
+  // State for the Form
+  const [formData, setFormData] = useState({
     companyName: "",
     address: "",
     taxId: "",
     contactEmail: "",
   });
+
+  // State for the Audit Trail (History)
+  const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
 
+  // 1. Fetch Profile Data AND Logs when page loads
   useEffect(() => {
-    // 1. Fetch existing profile data when page loads
-    const fetchProfile = async () => {
-      try {
-        const response = await api.get("/profile/");
-        setProfile(response.data);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching profile", error);
-
-        // --- MOCK DATA FOR TESTING UI (Fallback) ---
-        setProfile({
-          companyName: "Tech Solutions GmbH",
-          address: "Mainzer Landstraße 50, Frankfurt",
-          taxId: "DE123456789",
-          contactEmail: "info@techsolutions.de",
-        });
-        setLoading(false);
-        // -------------------------------------------
-      }
-    };
-    fetchProfile();
+    fetchData();
   }, []);
 
-  const handleChange = (e) => {
-    setProfile({ ...profile, [e.target.name]: e.target.value });
+  const fetchData = async () => {
+    try {
+      // Run both API calls at the same time
+      const [profileRes, logsRes] = await Promise.all([
+        api.get("/profile/"),
+        api.get("/audit-logs/"), // <--- FIXED: Uncommented and removed '/api'
+      ]);
+
+      setFormData(profileRes.data);
+      setLogs(logsRes.data);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = async (e) => {
+  // 2. Update state when you type
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // 3. Save Changes to Backend
+  const handleSave = async (e) => {
     e.preventDefault();
     try {
-      // In a real app, this sends the data to the backend
-      await api.put("/profile/", profile);
-      setMessage("Profile updated successfully!");
+      await api.put("/profile/", formData);
+      toast.success("✅ Profile updated successfully!");
+
+      // Immediately reload the logs to show the new "Updated Profile" entry
+      const logsRes = await api.get("/audit-logs/"); // <--- FIXED: Removed '/api'
+      setLogs(logsRes.data);
     } catch (error) {
-      // For demo purposes, we show success even if backend fails
-      setMessage("Profile updated successfully! (Mock Mode)");
       console.error(error);
+      toast.error("Failed to save profile.");
     }
   };
 
   return (
     <div>
       <Navbar />
-
-      {/* ADDED CLASS: profile-container */}
-      <div className="profile-container">
-        <h1>Company Profile</h1>
+      <div
+        className="profile-container"
+        style={{ maxWidth: "800px", margin: "40px auto", padding: "20px" }}
+      >
+        <div className="header-section">
+          <h1>Provider Profile</h1>
+          <p style={{ color: "#666" }}>
+            Manage your company master data and legal details.
+          </p>
+        </div>
 
         {loading ? (
-          <p>Loading...</p>
+          <p>Loading your data...</p>
         ) : (
-          <form onSubmit={handleSubmit}>
-            {/* WRAPPED IN form-group */}
-            <div className="form-group">
-              <label>Company Name:</label>
-              <input
-                type="text"
-                name="companyName"
-                value={profile.companyName}
-                onChange={handleChange}
-              />
-            </div>
+          <>
+            {/* --- THE FORM SECTION --- */}
+            <form
+              onSubmit={handleSave}
+              style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+            >
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Company Name
+                </label>
+                <input
+                  type="text"
+                  name="companyName"
+                  value={formData.companyName}
+                  onChange={handleChange}
+                  className="input-field"
+                  required
+                />
+              </div>
 
-            {/* WRAPPED IN form-group */}
-            <div className="form-group">
-              <label>Address:</label>
-              <input
-                type="text"
-                name="address"
-                value={profile.address}
-                onChange={handleChange}
-              />
-            </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Address
+                </label>
+                <textarea
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  rows="3"
+                  className="input-field"
+                  required
+                />
+              </div>
 
-            {/* WRAPPED IN form-group */}
-            <div className="form-group">
-              <label>Tax ID:</label>
-              <input
-                type="text"
-                name="taxId"
-                value={profile.taxId}
-                onChange={handleChange}
-              />
-            </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Tax ID (Legal)
+                </label>
+                <input
+                  type="text"
+                  name="taxId"
+                  value={formData.taxId}
+                  onChange={handleChange}
+                  className="input-field"
+                  required
+                />
+              </div>
 
-            {/* WRAPPED IN form-group */}
-            <div className="form-group">
-              <label>Contact Email:</label>
-              <input
-                type="email"
-                name="contactEmail"
-                value={profile.contactEmail}
-                onChange={handleChange}
-              />
-            </div>
+              <div className="form-group">
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Contact Email
+                </label>
+                <input
+                  type="email"
+                  name="contactEmail"
+                  value={formData.contactEmail}
+                  onChange={handleChange}
+                  className="input-field"
+                  required
+                />
+              </div>
 
-            {/* ADDED CLASS: save-btn */}
-            <button type="submit" className="save-btn">
-              Save Changes
-            </button>
-
-            {/* Audit Trail / Success Message */}
-            {message && (
-              <div
+              <button
+                type="submit"
                 style={{
-                  marginTop: "15px",
-                  padding: "10px",
-                  background: "#d4edda",
-                  color: "#155724",
-                  borderRadius: "4px",
+                  padding: "12px",
+                  backgroundColor: "#2563eb",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "16px",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  marginTop: "10px",
                 }}
               >
-                {message}
-              </div>
-            )}
-          </form>
-        )}
+                Save Changes
+              </button>
+            </form>
 
-        {/* Visual "Audit Trail" Requirement Placeholder */}
-        <div
-          style={{
-            marginTop: "30px",
-            borderTop: "1px solid #eee",
-            paddingTop: "10px",
-            fontSize: "0.9em",
-            color: "#666",
-          }}
-        >
-          <strong>Recent Activity (Audit Trail):</strong>
-          <ul style={{ paddingLeft: "20px", marginTop: "5px" }}>
-            <li>Updated Address - Today at 10:45 AM (User: Admin)</li>
-            <li>Profile Created - Nov 28, 2025 (System)</li>
-          </ul>
-        </div>
+            {/* --- THE AUDIT TRAIL SECTION --- */}
+            <div
+              style={{
+                marginTop: "60px",
+                borderTop: "2px solid #f3f4f6",
+                paddingTop: "30px",
+              }}
+            >
+              <h3 style={{ marginBottom: "5px" }}>🕒 Audit Trail (History)</h3>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#666",
+                  marginBottom: "20px",
+                }}
+              >
+                A secure record of all changes made to this account.
+              </p>
+
+              <div
+                style={{
+                  background: "#f9fafb",
+                  borderRadius: "8px",
+                  border: "1px solid #e5e7eb",
+                  overflow: "hidden",
+                }}
+              >
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {logs.length === 0 ? (
+                    <li
+                      style={{
+                        padding: "20px",
+                        color: "#9ca3af",
+                        fontStyle: "italic",
+                        textAlign: "center",
+                      }}
+                    >
+                      No activity recorded yet.
+                    </li>
+                  ) : (
+                    logs.map((log) => (
+                      <li
+                        key={log.id}
+                        style={{
+                          padding: "15px 20px",
+                          borderBottom: "1px solid #e5e7eb",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          fontSize: "14px",
+                          background: "white",
+                        }}
+                      >
+                        <div
+                          style={{ display: "flex", flexDirection: "column" }}
+                        >
+                          <strong style={{ color: "#1f2937" }}>
+                            {log.action}
+                          </strong>
+                          <span
+                            style={{
+                              color: "#6b7280",
+                              fontSize: "13px",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {log.details}
+                          </span>
+                        </div>
+                        <span
+                          style={{
+                            color: "#9ca3af",
+                            fontSize: "12px",
+                            background: "#f3f4f6",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {log.timestamp}
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

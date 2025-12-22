@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-s58)hz+5)2*%f0nsq$bdm@7z)2g=2cep_$&7g)m(nx%=lz$e(d
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -40,9 +40,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+     
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', # <--- Add this FIRST
     'corsheaders.middleware.CorsMiddleware', 
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -136,3 +138,15 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     )
 }
+CORS_ALLOW_ALL_ORIGINS = True
+# In backend/config/settings.py
+
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "authorization",
+    "content-type",
+    "accept",
+    "origin",
+    "x-csrftoken",
+]

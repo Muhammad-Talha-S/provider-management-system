@@ -87,3 +87,97 @@
   border-radius: 4px;
   cursor: pointer;
 }
+
+/* Contracts.css additions */
+.contracts-container {
+  max-width: 1000px;
+  margin: 40px auto;
+  padding: 20px;
+  font-family: "Inter", sans-serif;
+}
+.contract-list {
+  display: grid;
+  gap: 20px;
+}
+
+.contract-card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.status-badge {
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+.status-badge.pending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+.status-badge.signed {
+  background: #ecfdf5;
+  color: #047857;
+}
+.status-badge.negotiation {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.card-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.btn-sign {
+  background: #059669;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.btn-negotiate {
+  background: #f59e0b;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.btn-negotiate:hover {
+  background: #d97706;
+}
+
+/* Modal Styles (Reuse form previous page or paste here) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  width: 500px;
+}
+.input-field {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0 20px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
