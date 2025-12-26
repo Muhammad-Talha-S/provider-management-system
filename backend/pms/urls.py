@@ -13,5 +13,6 @@ urlpatterns = [
 
     #API
     path("api/", include("accounts.api.urls")),
+    path("api/", include("procurement.api.urls")),
 
 ]
