@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const ServiceRequests = () => {
+const ServiceRequestsList = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -132,4 +132,4 @@ const styles = {
   },
 };
 
-export default ServiceRequests;
+export default ServiceRequestsList;

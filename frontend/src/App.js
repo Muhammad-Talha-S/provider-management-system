@@ -5,41 +5,33 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-import Login from "./pages/LoginPage";
+import { AuthProvider } from "./context/AuthContext";
+
+import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
-import ServiceRequests from "./pages/ServiceRequests";
-import Contracts from "./pages/Contracts";
-import Profile from "./pages/Profile";
-import Team from "./pages/Team";
-import { ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import "./App.css";
-import Policies from "./pages/Policies";
+import ServiceRequestsList from "./pages/ServiceRequestsList";
+import CompanyUsers from "./pages/CompanyUsers"; // <--- IMPORT THIS
+import Layout from "./components/Layout";
+
 function App() {
   return (
-    <Router>
-      <div className="App">
-        {/* ToastContainer allows pop-up messages to work everywhere */}
-        <ToastContainer position="top-right" autoClose={3000} />
-
+    <AuthProvider>
+      <Router>
         <Routes>
-          {/* Public Route */}
-          <Route path="/" element={<Login />} />
+          <Route path="/login" element={<LoginPage />} />
 
-          {/* Protected Routes (Pages with Navbar) */}
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/requests" element={<ServiceRequests />} />
-          <Route path="/contracts" element={<Contracts />} />
-          <Route path="/profile" element={<Profile />} />
-          {/* <--- NEW: Add the route here */}
-          {/* <Route path="/team" element={<Team />} />*/}
-          <Route path="/experts" element={<Team />} />
-          {/* Catch-all: Redirect any unknown URL to Login */}
-          <Route path="*" element={<Navigate to="/" />} />
-          <Route path="/policies" element={<Policies />} />
+          {/* Protected Routes */}
+          <Route element={<Layout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/service-requests" element={<ServiceRequestsList />} />
+            <Route path="/company-users" element={<CompanyUsers />} />{" "}
+            {/* <--- ADD THIS */}
+          </Route>
+
+          <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
-      </div>
-    </Router>
+      </Router>
+    </AuthProvider>
   );
 }
 
