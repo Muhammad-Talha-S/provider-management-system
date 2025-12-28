@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from procurement.models import (
     ServiceRequest, ServiceRequestRequirement, ServiceRequestLanguage,
-    ServiceOffer, ServiceOfferMatchDetail,
+    ServiceOffer, ServiceOfferMatchDetail, ServiceOrder, ActivityLog
 )
 from providers.models import Specialist, SpecialistRoleCapability
 from accounts.models import RoleRatePolicy, UserRoleAssignment
@@ -186,3 +186,113 @@ def validate_rate_policy(sr: ServiceRequest, daily_rate: Decimal, exp_level: str
             f"daily_rate_eur {daily_rate} exceeds max {policy.max_daily_rate_eur} for "
             f"{sr.role_definition.name} ({exp_level}/{tech_level})."
         )
+
+
+class OfferListSerializer(serializers.ModelSerializer):
+    service_request_title = serializers.CharField(source="service_request.title", read_only=True)
+    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    submitted_by_name = serializers.CharField(source="submitted_by_user.full_name", read_only=True)
+    submitted_by_email = serializers.CharField(source="submitted_by_user.email", read_only=True)
+
+    class Meta:
+        model = ServiceOffer
+        fields = [
+            "id",
+            "service_request",
+            "service_request_title",
+            "provider",
+            "submitted_by_user",
+            "submitted_by_name",
+            "submitted_by_email",
+            "specialist",
+            "specialist_name",
+            "daily_rate_eur",
+            "travel_cost_per_onsite_day_eur",
+            "total_cost_eur",
+            "contractual_relationship",
+            "subcontractor_company_name",
+            "status",
+            "match_score",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ServiceOrderListSerializer(serializers.ModelSerializer):
+    service_request_title = serializers.CharField(source="service_request.title", read_only=True)
+    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    supplier_rep_name = serializers.CharField(source="supplier_representative_user.full_name", read_only=True)
+
+    class Meta:
+        model = ServiceOrder
+        fields = [
+            "id",
+            "title",
+            "status",
+            "service_request",
+            "service_request_title",
+            "provider",
+            "supplier_representative_user",
+            "supplier_rep_name",
+            "specialist",
+            "specialist_name",
+            "role_definition",
+            "start_date",
+            "end_date",
+            "location",
+            "man_days",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ServiceOrderDetailSerializer(serializers.ModelSerializer):
+    service_request_title = serializers.CharField(source="service_request.title", read_only=True)
+    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    supplier_rep_name = serializers.CharField(source="supplier_representative_user.full_name", read_only=True)
+    accepted_offer_id = serializers.UUIDField(source="accepted_offer.id", read_only=True)
+
+    class Meta:
+        model = ServiceOrder
+        fields = [
+            "id",
+            "title",
+            "status",
+            "service_request",
+            "service_request_title",
+            "accepted_offer_id",
+            "provider",
+            "supplier_representative_user",
+            "supplier_rep_name",
+            "specialist",
+            "specialist_name",
+            "role_definition",
+            "start_date",
+            "end_date",
+            "location",
+            "man_days",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.CharField(source="actor_user.full_name", read_only=True)
+    actor_email = serializers.CharField(source="actor_user.email", read_only=True)
+    provider_name = serializers.CharField(source="provider.name", read_only=True)
+
+    class Meta:
+        model = ActivityLog
+        fields = [
+            "id",
+            "provider",
+            "provider_name",
+            "actor_user",
+            "actor_name",
+            "actor_email",
+            "action",
+            "entity_type",
+            "entity_id",
+            "details",
+            "created_at",
+        ]

@@ -10,17 +10,22 @@ from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from procurement.models import ServiceRequest, ServiceOffer, ServiceOfferMatchDetail
+from procurement.models import ServiceRequest, ServiceOffer, ServiceOfferMatchDetail, ServiceOrder, ActivityLog
 from providers.models import Specialist
 from accounts.models import ProviderUser
+from procurement.api.utils import log_action
 
-from .permissions import IsProviderAdminOrSupplierRep, IsProviderAdminOrSupplierRepForWrite
+from .permissions import IsProviderAdminOnly, IsProviderAdminOrSupplierRep, IsProviderAdminOrSupplierRepForWrite
 from .serializers import (
     ServiceRequestListSerializer,
     ServiceRequestDetailSerializer,
     ServiceOfferSerializer,
     OfferCreateSerializer,
     OfferPatchSerializer,
+    OfferListSerializer,
+    ServiceOrderListSerializer,
+    ServiceOrderDetailSerializer,
+    ActivityLogSerializer,
     compute_total_cost,
     pick_levels_for_policy,
     validate_rate_policy,
@@ -99,6 +104,18 @@ class CreateOfferForServiceRequestView(APIView):
                 "note": "Basic scoring placeholder; requirements matching will be improved later.",
             },
         )
+        log_action(
+            provider_id=user.provider_id,
+            actor_user_id=user.id,
+            action="OFFER_SUBMITTED",
+            entity_type="service_offer",
+            entity_id=offer.id,
+            details={
+                "service_request_id": str(sr.id),
+                "daily_rate_eur": str(offer.daily_rate_eur),
+                "total_cost_eur": str(offer.total_cost_eur),
+            },
+        )
 
         return Response(ServiceOfferSerializer(offer).data, status=status.HTTP_201_CREATED)
 
@@ -168,7 +185,14 @@ class OfferPatchView(APIView):
         offer.total_cost_eur = compute_total_cost(sr, offer.daily_rate_eur, offer.travel_cost_per_onsite_day_eur)
 
         offer.save()
-
+        log_action(
+            provider_id=user.provider_id,
+            actor_user_id=user.id,
+            action="OFFER_EDITED",
+            entity_type="service_offer",
+            entity_id=offer.id,
+            details=data,  # shows what fields were edited
+        )
         # update match detail record (if exists)
         if hasattr(offer, "match_detail"):
             offer.match_detail.details.update({
@@ -208,5 +232,165 @@ class OfferWithdrawView(APIView):
 
         offer.status = "WITHDRAWN"
         offer.save(update_fields=["status"])
-
+        log_action(
+            provider_id=user.provider_id,
+            actor_user_id=user.id,
+            action="OFFER_WITHDRAWN",
+            entity_type="service_offer",
+            entity_id=offer.id,
+        )
         return Response({"detail": "Offer withdrawn successfully."}, status=status.HTTP_200_OK)
+
+
+class OfferListView(ListAPIView):
+    """
+    GET /api/offers/
+    - Supplier Rep + Provider Admin
+    - Tenant-safe: only offers where offer.provider_id == request.user.provider_id
+    - Optional filters: ?status=SUBMITTED&service_request=<uuid>
+    """
+    permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
+    serializer_class = OfferListSerializer
+
+    def get_queryset(self):
+        user: ProviderUser = self.request.user
+        if not user.provider_id:
+            return ServiceOffer.objects.none()
+
+        qs = ServiceOffer.objects.filter(provider_id=user.provider_id).select_related(
+            "service_request", "submitted_by_user", "specialist", "provider"
+        ).order_by("-created_at")
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        sr_id = self.request.query_params.get("service_request")
+        if sr_id:
+            qs = qs.filter(service_request_id=sr_id)
+
+        return qs
+
+
+class OfferDetailViewTenantSafe(RetrieveAPIView):
+    """
+    GET /api/offers/<id>/
+    - Supplier Rep + Provider Admin
+    - Tenant-safe: only if offer.provider_id == request.user.provider_id
+    """
+    permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
+    serializer_class = OfferListSerializer
+    queryset = ServiceOffer.objects.select_related(
+        "service_request", "submitted_by_user", "specialist", "provider"
+    )
+
+    def get_object(self):
+        obj: ServiceOffer = super().get_object()
+        user: ProviderUser = self.request.user
+        if not user.provider_id or obj.provider_id != user.provider_id:
+            raise PermissionDenied("You can only view offers of your provider.")
+        return obj
+
+
+class MyOffersForRequestView(ListAPIView):
+    """
+    GET /api/service-requests/<id>/my-offers/
+    - Supplier Rep + Provider Admin
+    - Tenant-safe: offers for this request but only by my provider
+    """
+    permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
+    serializer_class = OfferListSerializer
+
+    def get_queryset(self):
+        user: ProviderUser = self.request.user
+        if not user.provider_id:
+            return ServiceOffer.objects.none()
+
+        sr_id = self.kwargs["sr_id"]
+        # ensure request exists (optional but cleaner error)
+        ServiceRequest.objects.filter(id=sr_id).exists()
+
+        return (
+            ServiceOffer.objects.filter(service_request_id=sr_id, provider_id=user.provider_id)
+            .select_related("service_request", "submitted_by_user", "specialist", "provider")
+            .order_by("-created_at")
+        )
+
+
+class ServiceOrderListView(ListAPIView):
+    """
+    GET /api/service-orders/
+    - Supplier Rep + Provider Admin
+    - Tenant-safe: only orders for my provider
+    """
+    permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
+    serializer_class = ServiceOrderListSerializer
+
+    def get_queryset(self):
+        user: ProviderUser = self.request.user
+        if not user.provider_id:
+            return ServiceOrder.objects.none()
+
+        qs = (
+            ServiceOrder.objects.filter(provider_id=user.provider_id)
+            .select_related("service_request", "provider", "supplier_representative_user", "specialist", "role_definition")
+            .order_by("-created_at")
+        )
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        return qs
+
+
+class ServiceOrderDetailView(RetrieveAPIView):
+    """
+    GET /api/service-orders/<id>/
+    - Supplier Rep + Provider Admin
+    - Tenant-safe: only if order.provider_id == request.user.provider_id
+    """
+    permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
+    serializer_class = ServiceOrderDetailSerializer
+    queryset = ServiceOrder.objects.select_related(
+        "service_request", "provider", "supplier_representative_user", "specialist", "role_definition", "accepted_offer"
+    )
+
+    def get_object(self):
+        obj: ServiceOrder = super().get_object()
+        user: ProviderUser = self.request.user
+        if not user.provider_id or obj.provider_id != user.provider_id:
+            raise PermissionDenied("You can only view service orders of your provider.")
+        return obj
+
+
+class ActivityLogListView(ListAPIView):
+    """
+    GET /api/activity-logs/
+    - Provider Admin only
+    - Tenant-safe: only logs for my provider
+    - Optional filters: ?action=OFFER_SUBMITTED
+    """
+    permission_classes = [IsAuthenticated, IsProviderAdminOnly]
+    serializer_class = ActivityLogSerializer
+
+    def get_queryset(self):
+        user: ProviderUser = self.request.user
+        if not user.provider_id:
+            return ActivityLog.objects.none()
+
+        qs = (
+            ActivityLog.objects.filter(provider_id=user.provider_id)
+            .select_related("provider", "actor_user")
+            .order_by("-created_at")
+        )
+
+        action = self.request.query_params.get("action")
+        if action:
+            qs = qs.filter(action=action)
+
+        entity_type = self.request.query_params.get("entity_type")
+        if entity_type:
+            qs = qs.filter(entity_type=entity_type)
+
+        return qs
