@@ -1,70 +1,75 @@
-import { createContext, useState, useEffect } from "react";
-import { jwtDecode } from "jwt-decode";
-import { useNavigate } from "react-router-dom";
-import api from "../api/axios";
+import React, { createContext, useState, useEffect, useCallback } from "react";
 
-const AuthContext = createContext();
-
-export default AuthContext;
+export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  // 1. Check if token exists in browser storage on load
-  let [authTokens, setAuthTokens] = useState(() =>
-    localStorage.getItem("authTokens")
-      ? JSON.parse(localStorage.getItem("authTokens"))
-      : null
-  );
-  let [user, setUser] = useState(() =>
-    localStorage.getItem("authTokens")
-      ? jwtDecode(localStorage.getItem("authTokens"))
-      : null
-  );
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const navigate = useNavigate();
+  const logout = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    setUser(null);
+    window.location.href = "/login";
+  }, []);
 
-  // 2. Login Function
-  let loginUser = async (e) => {
-    e.preventDefault();
-
-    // Get values from form
-    const username = e.target.username.value;
-    const password = e.target.password.value;
-
+  const checkUserLoggedIn = useCallback(async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     try {
-      // POST to Django Backend (Make sure URL matches backend!)
-      const response = await api.post("/token/", {
-        username: username,
-        password: password,
+      const response = await fetch("http://127.0.0.1:8000/api/me/", {
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (response.status === 200) {
-        setAuthTokens(response.data);
-        setUser(jwtDecode(response.data.access));
-        localStorage.setItem("authTokens", JSON.stringify(response.data));
-        navigate("/"); // Go to Dashboard after login
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      } else {
+        logout();
       }
     } catch (error) {
-      alert(
-        "Login failed! Check your username/password or backend connection."
-      );
+      console.error("Auth Check Failed", error);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [logout]);
 
-  // 3. Logout Function
-  let logoutUser = () => {
-    setAuthTokens(null);
-    setUser(null);
-    localStorage.removeItem("authTokens");
-    navigate("/login");
-  };
+  // --- NEW ROLE HELPERS ---
+  const hasRole = useCallback(
+    (roleName) => {
+      return user?.roles?.includes(roleName) || false;
+    },
+    [user]
+  );
 
-  let contextData = {
-    user: user,
-    loginUser: loginUser,
-    logoutUser: logoutUser,
-  };
+  const isProviderAdmin = useCallback(
+    () => hasRole("Provider Admin"),
+    [hasRole]
+  );
+  const isSupplierRep = useCallback(
+    () => hasRole("Supplier Representative"),
+    [hasRole]
+  );
+  const isSpecialist = useCallback(() => hasRole("Specialist"), [hasRole]);
+
+  useEffect(() => {
+    checkUserLoggedIn();
+  }, [checkUserLoggedIn]);
 
   return (
-    <AuthContext.Provider value={contextData}>{children}</AuthContext.Provider>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        logout,
+        isProviderAdmin,
+        isSupplierRep,
+        isSpecialist,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 };

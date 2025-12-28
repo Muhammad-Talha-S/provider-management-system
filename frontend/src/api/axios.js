@@ -1,25 +1,19 @@
 import axios from "axios";
 
-// 1. Create the API client
 const api = axios.create({
-  baseURL: "http://192.168.178.68:8000/api/", // Make sure this matches your Django URL
+  baseURL: "http://127.0.0.1:8000/api/", // Make sure this matches your Django URL
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-// 2. The "Interceptor" - Runs before every request
-api.interceptors.request.use(
-  (config) => {
-    // Grab the token we saved during Login
-    const token = localStorage.getItem("access");
-
-    // If we have a token, attach it to the header
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+// Add a request interceptor to attach the Token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+});
 
 export default api;
