@@ -44,6 +44,7 @@ class ContractDomain(models.Model):
 class ContractRole(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name="roles")
+    # IMPORTANT: this should reference JOB roles, not SYSTEM roles (enforced in seed / code)
     role_definition = models.ForeignKey("accounts.RoleDefinition", on_delete=models.PROTECT)
 
     class Meta:
@@ -102,9 +103,10 @@ class ServiceRequest(models.Model):
 
     domain_name = models.CharField(max_length=255, blank=True, null=True)
 
+    # IMPORTANT: JOB role requested (e.g., Backend Django Developer)
     role_definition = models.ForeignKey(
         "accounts.RoleDefinition", on_delete=models.PROTECT, blank=True, null=True
-    )  # mostly for SINGLE/MULTI
+    )
 
     technology = models.CharField(max_length=255, blank=True, null=True)
     experience_level = models.CharField(max_length=20, blank=True, null=True)
@@ -171,7 +173,11 @@ class ServiceOffer(models.Model):
     submitted_by_user = models.ForeignKey(
         "accounts.ProviderUser", on_delete=models.PROTECT, related_name="submitted_offers"
     )
-    specialist = models.ForeignKey("providers.Specialist", on_delete=models.PROTECT, related_name="offers")
+
+    # Specialist is a user (employee)
+    specialist_user = models.ForeignKey(
+        "accounts.ProviderUser", on_delete=models.PROTECT, related_name="offers_as_specialist"
+    )
 
     daily_rate_eur = models.DecimalField(max_digits=10, decimal_places=2)
     travel_cost_per_onsite_day_eur = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -191,7 +197,7 @@ class ServiceOffer(models.Model):
             models.Index(fields=["service_request"]),
             models.Index(fields=["provider"]),
             models.Index(fields=["submitted_by_user"]),
-            models.Index(fields=["specialist"]),
+            models.Index(fields=["specialist_user"]),
             models.Index(fields=["service_request", "provider"]),
         ]
 
@@ -217,7 +223,11 @@ class ServiceOrder(models.Model):
     supplier_representative_user = models.ForeignKey(
         "accounts.ProviderUser", on_delete=models.PROTECT, related_name="service_orders_as_rep"
     )
-    specialist = models.ForeignKey("providers.Specialist", on_delete=models.PROTECT, related_name="service_orders")
+
+    # Specialist assigned is a user (employee)
+    specialist_user = models.ForeignKey(
+        "accounts.ProviderUser", on_delete=models.PROTECT, related_name="service_orders_as_specialist"
+    )
 
     role_definition = models.ForeignKey("accounts.RoleDefinition", on_delete=models.PROTECT, blank=True, null=True)
 
@@ -237,7 +247,7 @@ class ServiceOrder(models.Model):
             models.Index(fields=["service_request"]),
             models.Index(fields=["provider"]),
             models.Index(fields=["supplier_representative_user"]),
-            models.Index(fields=["specialist"]),
+            models.Index(fields=["specialist_user"]),
             models.Index(fields=["status"]),
         ]
 
@@ -277,8 +287,8 @@ class ActivityLog(models.Model):
     provider = models.ForeignKey("providers.Provider", on_delete=models.PROTECT, blank=True, null=True)
     actor_user = models.ForeignKey("accounts.ProviderUser", on_delete=models.PROTECT, blank=True, null=True)
 
-    action = models.CharField(max_length=120)  # ROLE_ASSIGNED, OFFER_SUBMITTED, etc.
-    entity_type = models.CharField(max_length=120, blank=True, null=True)  # service_offer, service_request, ...
+    action = models.CharField(max_length=120)
+    entity_type = models.CharField(max_length=120, blank=True, null=True)
     entity_id = models.UUIDField(blank=True, null=True)
 
     details = models.JSONField(blank=True, null=True)

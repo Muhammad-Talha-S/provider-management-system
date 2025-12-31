@@ -34,8 +34,9 @@ class ProviderUserManager(BaseUserManager):
 
 class ProviderUser(AbstractBaseUser, PermissionsMixin):
     """
-    Tenant user: belongs to a Provider.
-    Authorization is custom RBAC via UserRoleAssignment.
+    Everyone is a user (employee) inside a Provider.
+    System access is controlled by SYSTEM roles (Specialist, Provider Admin, Supplier Rep, Contract Coordinator).
+    Job capability is controlled by JOB roles (Backend Django Developer, Data Engineer, ...).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -51,6 +52,7 @@ class ProviderUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255)
 
+    # Used for "activate/deactivate employee"
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
@@ -65,24 +67,50 @@ class ProviderUser(AbstractBaseUser, PermissionsMixin):
     def __str__(self) -> str:
         return f"{self.email} ({self.full_name})"
 
-    def active_role_names(self) -> set[str]:
+    def _active_assignments_qs(self):
         now = timezone.now()
-        qs = (
+        return (
             self.role_assignments.select_related("role_definition")
             .filter(status=UserRoleAssignment.Status.ACTIVE)
             .filter(valid_from__lte=now)
             .filter(models.Q(valid_to__isnull=True) | models.Q(valid_to__gt=now))
         )
-        return {x.role_definition.name for x in qs}
 
-    def has_active_role(self, role_name: str) -> bool:
-        return role_name in self.active_role_names()
+    def active_system_role_names(self) -> set[str]:
+        return {
+            x.role_definition.name
+            for x in self._active_assignments_qs().filter(role_definition__role_type=RoleDefinition.RoleType.SYSTEM)
+        }
+
+    def active_job_role_names(self) -> set[str]:
+        return {
+            x.role_definition.name
+            for x in self._active_assignments_qs().filter(role_definition__role_type=RoleDefinition.RoleType.JOB)
+        }
+
+    def has_system_role(self, role_name: str) -> bool:
+        return role_name in self.active_system_role_names()
+
+    def has_job_role(self, role_name: str) -> bool:
+        return role_name in self.active_job_role_names()
+
+    def active_role_names(self) -> set[str]:
+        # kept for backward compatibility (returns both types)
+        return {x.role_definition.name for x in self._active_assignments_qs()}
 
 
 class RoleDefinition(models.Model):
+    class RoleType(models.TextChoices):
+        SYSTEM = "SYSTEM", "System"
+        JOB = "JOB", "Job"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    name = models.CharField(max_length=120)  # e.g., Supplier Representative
+    # Example SYSTEM: Specialist, Provider Admin, Supplier Representative, Contract Coordinator
+    # Example JOB: Backend Django Developer, Full Stack Developer, Data Engineer, Frontend Developer
+    role_type = models.CharField(max_length=10, choices=RoleType.choices, default=RoleType.SYSTEM)
+
+    name = models.CharField(max_length=120)
     domain = models.CharField(max_length=120, blank=True, null=True)
     group_name = models.CharField(max_length=120, blank=True, null=True)
 
@@ -94,13 +122,15 @@ class RoleDefinition(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["name", "domain", "group_name"],
-                name="uniq_roledef_name_domain_group",
+                fields=["role_type", "name", "domain", "group_name"],
+                name="uniq_roledef_type_name_domain_group",
             )
         ]
 
     def __str__(self) -> str:
-        return " / ".join([p for p in [self.name, self.domain, self.group_name] if p])
+        prefix = self.role_type
+        parts = [self.name, self.domain, self.group_name]
+        return f"{prefix}: " + " / ".join([p for p in parts if p])
 
 
 class UserRoleAssignment(models.Model):
@@ -127,6 +157,7 @@ class UserRoleAssignment(models.Model):
         RoleDefinition, on_delete=models.PROTECT, related_name="assignments"
     )
 
+    # For JOB roles (capability)
     experience_level = models.CharField(
         max_length=20, choices=ExperienceLevel.choices, blank=True, null=True
     )
@@ -155,14 +186,44 @@ class UserRoleAssignment(models.Model):
         self.save(update_fields=["status", "valid_to"])
 
     def __str__(self) -> str:
-        return f"{self.user.email} -> {self.role_definition.name} ({self.status})"
+        return f"{self.user.email} -> {self.role_definition} ({self.status})"
+
+
+class SpecialistProfile(models.Model):
+    """
+    Specialist is not a separate user; it's a role.
+    Specialist-only attributes live here.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.OneToOneField(
+        ProviderUser, on_delete=models.CASCADE, related_name="specialist_profile"
+    )
+
+    material_number = models.CharField(max_length=120, blank=True, null=True)
+    performance_grade = models.DecimalField(max_digits=3, decimal_places=2, blank=True, null=True)
+    avg_daily_rate_eur = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    # If you want to deactivate employee, use ProviderUser.is_active (not here)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user"], name="uniq_specialist_profile_user")
+        ]
+
+    def __str__(self) -> str:
+        return f"SpecialistProfile({self.user.email})"
 
 
 class RoleRatePolicy(models.Model):
     """
-    Your 'Maximum Price' matrix:
-    (role_definition + experience_level + technology_level) -> max_daily_rate_eur
+    Maximum price matrix for JOB roles only:
+    (job_role + experience_level + technology_level) -> max_daily_rate_eur
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     role_definition = models.ForeignKey(
@@ -184,4 +245,4 @@ class RoleRatePolicy(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.role_definition.name} {self.experience_level}/{self.technology_level} <= {self.max_daily_rate_eur}"
+        return f"{self.role_definition} {self.experience_level}/{self.technology_level} <= {self.max_daily_rate_eur}"

@@ -11,8 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from procurement.models import ServiceRequest, ServiceOffer, ServiceOfferMatchDetail, ServiceOrder, ActivityLog
-from providers.models import Specialist
-from accounts.models import ProviderUser
+from accounts.models import ProviderUser, RoleDefinition
 from procurement.api.utils import log_action
 
 from .permissions import IsProviderAdminOnly, IsProviderAdminOrSupplierRep, IsProviderAdminOrSupplierRepForWrite
@@ -27,9 +26,11 @@ from .serializers import (
     ServiceOrderDetailSerializer,
     ActivityLogSerializer,
     compute_total_cost,
-    pick_levels_for_policy,
+    get_job_levels_for_user,
     validate_rate_policy,
 )
+
+SYSTEM_ROLE_SPECIALIST = "Specialist"
 
 
 class ServiceRequestListView(ListAPIView):
@@ -37,7 +38,6 @@ class ServiceRequestListView(ListAPIView):
     serializer_class = ServiceRequestListSerializer
 
     def get_queryset(self):
-        # for now: return PUBLISHED only (later: filter by domain/role/tech/language)
         return ServiceRequest.objects.filter(status="PUBLISHED").order_by("-created_at")
 
 
@@ -59,21 +59,29 @@ class CreateOfferForServiceRequestView(APIView):
         sr = get_object_or_404(ServiceRequest, id=sr_id)
         if sr.status != "PUBLISHED":
             raise ValidationError("Cannot submit offer: service request is not PUBLISHED.")
+        if not sr.role_definition_id:
+            raise ValidationError("Service request has no role_definition; cannot submit offer.")
+        if sr.role_definition.role_type != RoleDefinition.RoleType.JOB:
+            raise ValidationError("Service request role_definition must be a JOB role.")
 
         payload = OfferCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         data = payload.validated_data
 
-        specialist = get_object_or_404(Specialist, id=data["specialist_id"])
+        specialist_user = get_object_or_404(ProviderUser, id=data["specialist_user_id"])
 
-        # tenant boundary: specialist must belong to user's provider
-        if specialist.provider_id != user.provider_id:
-            raise PermissionDenied("You can only submit offers with specialists from your own provider.")
+        # tenant boundary
+        if specialist_user.provider_id != user.provider_id:
+            raise PermissionDenied("You can only submit offers with employees from your own provider.")
+        if not specialist_user.is_active:
+            raise ValidationError("Selected employee is inactive. Activate user before using in offers.")
+        if not specialist_user.has_system_role(SYSTEM_ROLE_SPECIALIST):
+            raise ValidationError("Selected employee must have SYSTEM role 'Specialist'.")
 
         daily_rate = data["daily_rate_eur"]
         travel = data.get("travel_cost_per_onsite_day_eur") or 0
 
-        exp_level, tech_level = pick_levels_for_policy(sr, specialist, data)
+        exp_level, tech_level = get_job_levels_for_user(sr, specialist_user)
         validate_rate_policy(sr, daily_rate, exp_level, tech_level)
 
         total_cost = compute_total_cost(sr, daily_rate, travel)
@@ -82,7 +90,7 @@ class CreateOfferForServiceRequestView(APIView):
             service_request=sr,
             provider_id=user.provider_id,
             submitted_by_user=user,
-            specialist=specialist,
+            specialist_user=specialist_user,
             daily_rate_eur=daily_rate,
             travel_cost_per_onsite_day_eur=travel,
             total_cost_eur=total_cost,
@@ -91,7 +99,6 @@ class CreateOfferForServiceRequestView(APIView):
             status="SUBMITTED",
         )
 
-        # very simple match score for now (we improve later)
         offer.match_score = 0
         offer.save(update_fields=["match_score"])
 
@@ -104,6 +111,7 @@ class CreateOfferForServiceRequestView(APIView):
                 "note": "Basic scoring placeholder; requirements matching will be improved later.",
             },
         )
+
         log_action(
             provider_id=user.provider_id,
             actor_user_id=user.id,
@@ -114,26 +122,14 @@ class CreateOfferForServiceRequestView(APIView):
                 "service_request_id": str(sr.id),
                 "daily_rate_eur": str(offer.daily_rate_eur),
                 "total_cost_eur": str(offer.total_cost_eur),
+                "specialist_user_id": str(specialist_user.id),
             },
         )
 
         return Response(ServiceOfferSerializer(offer).data, status=status.HTTP_201_CREATED)
 
 
-class OfferDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, offer_id):
-        offer = get_object_or_404(ServiceOffer, id=offer_id)
-        return Response(ServiceOfferSerializer(offer).data)
-
-
 class OfferPatchView(APIView):
-    """
-    PATCH /api/offers/<id>/
-    - allowed: submitter or Provider Admin of same provider
-    - disallowed if offer status is ACCEPTED/REJECTED/EXPIRED/WITHDRAWN
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRepForWrite]
 
     @transaction.atomic
@@ -141,13 +137,11 @@ class OfferPatchView(APIView):
         user: ProviderUser = request.user
         offer = get_object_or_404(ServiceOffer, id=offer_id)
 
-        # tenant boundary
         if not user.provider_id or offer.provider_id != user.provider_id:
             raise PermissionDenied("You can only edit offers of your provider.")
 
-        # who can edit?
         is_submitter = offer.submitted_by_user_id == user.id
-        is_admin = user.has_active_role("Provider Admin")
+        is_admin = user.has_system_role("Provider Admin")
         if not (is_submitter or is_admin):
             raise PermissionDenied("Only submitter or Provider Admin can edit this offer.")
 
@@ -158,12 +152,15 @@ class OfferPatchView(APIView):
         payload.is_valid(raise_exception=True)
         data = payload.validated_data
 
-        # optional specialist change
-        if "specialist_id" in data:
-            specialist = get_object_or_404(Specialist, id=data["specialist_id"])
-            if specialist.provider_id != user.provider_id:
-                raise PermissionDenied("Specialist must belong to your provider.")
-            offer.specialist = specialist
+        if "specialist_user_id" in data:
+            specialist_user = get_object_or_404(ProviderUser, id=data["specialist_user_id"])
+            if specialist_user.provider_id != user.provider_id:
+                raise PermissionDenied("Employee must belong to your provider.")
+            if not specialist_user.is_active:
+                raise ValidationError("Selected employee is inactive.")
+            if not specialist_user.has_system_role(SYSTEM_ROLE_SPECIALIST):
+                raise ValidationError("Selected employee must have SYSTEM role 'Specialist'.")
+            offer.specialist_user = specialist_user
 
         if "daily_rate_eur" in data:
             offer.daily_rate_eur = data["daily_rate_eur"]
@@ -177,23 +174,22 @@ class OfferPatchView(APIView):
         if "subcontractor_company_name" in data:
             offer.subcontractor_company_name = data.get("subcontractor_company_name") or None
 
-        # re-validate policy + recompute cost if rate/travel/specialist changed
         sr = offer.service_request
-        exp_level, tech_level = pick_levels_for_policy(sr, offer.specialist, {})
+        exp_level, tech_level = get_job_levels_for_user(sr, offer.specialist_user)
         validate_rate_policy(sr, offer.daily_rate_eur, exp_level, tech_level)
-
         offer.total_cost_eur = compute_total_cost(sr, offer.daily_rate_eur, offer.travel_cost_per_onsite_day_eur)
 
         offer.save()
+
         log_action(
             provider_id=user.provider_id,
             actor_user_id=user.id,
             action="OFFER_EDITED",
             entity_type="service_offer",
             entity_id=offer.id,
-            details=data,  # shows what fields were edited
+            details=data,
         )
-        # update match detail record (if exists)
+
         if hasattr(offer, "match_detail"):
             offer.match_detail.details.update({
                 "experience_level_used": exp_level,
@@ -207,11 +203,6 @@ class OfferPatchView(APIView):
 
 
 class OfferWithdrawView(APIView):
-    """
-    POST /api/offers/<id>/withdraw/
-    - allowed: submitter or Provider Admin (same provider)
-    - sets status WITHDRAWN
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRepForWrite]
 
     @transaction.atomic
@@ -223,7 +214,7 @@ class OfferWithdrawView(APIView):
             raise PermissionDenied("You can only withdraw offers of your provider.")
 
         is_submitter = offer.submitted_by_user_id == user.id
-        is_admin = user.has_active_role("Provider Admin")
+        is_admin = user.has_system_role("Provider Admin")
         if not (is_submitter or is_admin):
             raise PermissionDenied("Only submitter or Provider Admin can withdraw this offer.")
 
@@ -232,6 +223,7 @@ class OfferWithdrawView(APIView):
 
         offer.status = "WITHDRAWN"
         offer.save(update_fields=["status"])
+
         log_action(
             provider_id=user.provider_id,
             actor_user_id=user.id,
@@ -239,16 +231,11 @@ class OfferWithdrawView(APIView):
             entity_type="service_offer",
             entity_id=offer.id,
         )
+
         return Response({"detail": "Offer withdrawn successfully."}, status=status.HTTP_200_OK)
 
 
 class OfferListView(ListAPIView):
-    """
-    GET /api/offers/
-    - Supplier Rep + Provider Admin
-    - Tenant-safe: only offers where offer.provider_id == request.user.provider_id
-    - Optional filters: ?status=SUBMITTED&service_request=<uuid>
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
     serializer_class = OfferListSerializer
 
@@ -258,7 +245,7 @@ class OfferListView(ListAPIView):
             return ServiceOffer.objects.none()
 
         qs = ServiceOffer.objects.filter(provider_id=user.provider_id).select_related(
-            "service_request", "submitted_by_user", "specialist", "provider"
+            "service_request", "submitted_by_user", "specialist_user", "provider"
         ).order_by("-created_at")
 
         status_param = self.request.query_params.get("status")
@@ -272,32 +259,7 @@ class OfferListView(ListAPIView):
         return qs
 
 
-class OfferDetailViewTenantSafe(RetrieveAPIView):
-    """
-    GET /api/offers/<id>/
-    - Supplier Rep + Provider Admin
-    - Tenant-safe: only if offer.provider_id == request.user.provider_id
-    """
-    permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
-    serializer_class = OfferListSerializer
-    queryset = ServiceOffer.objects.select_related(
-        "service_request", "submitted_by_user", "specialist", "provider"
-    )
-
-    def get_object(self):
-        obj: ServiceOffer = super().get_object()
-        user: ProviderUser = self.request.user
-        if not user.provider_id or obj.provider_id != user.provider_id:
-            raise PermissionDenied("You can only view offers of your provider.")
-        return obj
-
-
 class MyOffersForRequestView(ListAPIView):
-    """
-    GET /api/service-requests/<id>/my-offers/
-    - Supplier Rep + Provider Admin
-    - Tenant-safe: offers for this request but only by my provider
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
     serializer_class = OfferListSerializer
 
@@ -307,22 +269,16 @@ class MyOffersForRequestView(ListAPIView):
             return ServiceOffer.objects.none()
 
         sr_id = self.kwargs["sr_id"]
-        # ensure request exists (optional but cleaner error)
         ServiceRequest.objects.filter(id=sr_id).exists()
 
         return (
             ServiceOffer.objects.filter(service_request_id=sr_id, provider_id=user.provider_id)
-            .select_related("service_request", "submitted_by_user", "specialist", "provider")
+            .select_related("service_request", "submitted_by_user", "specialist_user", "provider")
             .order_by("-created_at")
         )
 
 
 class ServiceOrderListView(ListAPIView):
-    """
-    GET /api/service-orders/
-    - Supplier Rep + Provider Admin
-    - Tenant-safe: only orders for my provider
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
     serializer_class = ServiceOrderListSerializer
 
@@ -330,30 +286,16 @@ class ServiceOrderListView(ListAPIView):
         user: ProviderUser = self.request.user
         if not user.provider_id:
             return ServiceOrder.objects.none()
-
-        qs = (
-            ServiceOrder.objects.filter(provider_id=user.provider_id)
-            .select_related("service_request", "provider", "supplier_representative_user", "specialist", "role_definition")
-            .order_by("-created_at")
-        )
-
-        status_param = self.request.query_params.get("status")
-        if status_param:
-            qs = qs.filter(status=status_param)
-
-        return qs
+        return ServiceOrder.objects.filter(provider_id=user.provider_id).select_related(
+            "service_request", "supplier_representative_user", "specialist_user"
+        ).order_by("-created_at")
 
 
 class ServiceOrderDetailView(RetrieveAPIView):
-    """
-    GET /api/service-orders/<id>/
-    - Supplier Rep + Provider Admin
-    - Tenant-safe: only if order.provider_id == request.user.provider_id
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
     serializer_class = ServiceOrderDetailSerializer
     queryset = ServiceOrder.objects.select_related(
-        "service_request", "provider", "supplier_representative_user", "specialist", "role_definition", "accepted_offer"
+        "service_request", "supplier_representative_user", "specialist_user"
     )
 
     def get_object(self):
@@ -365,12 +307,6 @@ class ServiceOrderDetailView(RetrieveAPIView):
 
 
 class ActivityLogListView(ListAPIView):
-    """
-    GET /api/activity-logs/
-    - Provider Admin only
-    - Tenant-safe: only logs for my provider
-    - Optional filters: ?action=OFFER_SUBMITTED
-    """
     permission_classes = [IsAuthenticated, IsProviderAdminOnly]
     serializer_class = ActivityLogSerializer
 
@@ -378,19 +314,4 @@ class ActivityLogListView(ListAPIView):
         user: ProviderUser = self.request.user
         if not user.provider_id:
             return ActivityLog.objects.none()
-
-        qs = (
-            ActivityLog.objects.filter(provider_id=user.provider_id)
-            .select_related("provider", "actor_user")
-            .order_by("-created_at")
-        )
-
-        action = self.request.query_params.get("action")
-        if action:
-            qs = qs.filter(action=action)
-
-        entity_type = self.request.query_params.get("entity_type")
-        if entity_type:
-            qs = qs.filter(entity_type=entity_type)
-
-        return qs
+        return ActivityLog.objects.filter(provider_id=user.provider_id).select_related("provider", "actor_user").order_by("-created_at")

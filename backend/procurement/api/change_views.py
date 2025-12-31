@@ -11,16 +11,14 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from procurement.models import ServiceOrder, ServiceOrderChangeRequest
-from providers.models import Specialist
 from accounts.models import ProviderUser
 
-from procurement.api.permissions import IsProviderAdminOrSupplierRep, IsProviderAdminOnly
+from procurement.api.permissions import IsProviderAdminOrSupplierRep
 from procurement.api.utils import log_action
 from .change_serializers import (
     ChangeRequestListSerializer,
     SupplierSubstitutionCreateSerializer,
     PMExtensionCreateSerializer,
-    PMSubstitutionCreateSerializer,
     ChangeDecisionSerializer,
 )
 
@@ -78,9 +76,15 @@ class SupplierInitiateSubstitutionView(APIView):
         payload_ser.is_valid(raise_exception=True)
         data = payload_ser.validated_data
 
-        new_spec = get_object_or_404(Specialist, id=data["new_specialist_id"])
-        if new_spec.provider_id != user.provider_id:
+        new_user = get_object_or_404(ProviderUser, id=data["new_specialist_user_id"])
+        if new_user.provider_id != user.provider_id:
             raise PermissionDenied("New specialist must belong to your provider.")
+        if not new_user.is_active:
+            raise ValidationError("New specialist user is inactive.")
+
+        # Optional: enforce they have SYSTEM role Specialist
+        if not new_user.has_system_role("Specialist"):
+            raise ValidationError("New specialist user must have SYSTEM role 'Specialist'.")
 
         cr = ServiceOrderChangeRequest.objects.create(
             service_order=order,
@@ -88,8 +92,8 @@ class SupplierInitiateSubstitutionView(APIView):
             initiated_by_type="SUPPLIER_REP",
             initiated_by_user=user,
             payload={
-                "new_specialist_id": str(new_spec.id),
-                "new_specialist_name": new_spec.full_name,
+                "new_specialist_user_id": str(new_user.id),
+                "new_specialist_user_name": new_user.full_name,
                 "reason": data.get("reason") or "",
             },
             status="REQUESTED",  # waiting for PM approval (simulated)
@@ -110,7 +114,7 @@ class SupplierInitiateSubstitutionView(APIView):
 class SupplierDecideOnPMChangeRequestView(APIView):
     """
     POST /api/change-requests/<id>/accept/  or /reject/
-    Supplier Rep can accept/reject PM-initiated requests (extension or substitution)
+    Supplier Rep can accept/reject PM-initiated requests (extension)
     """
     permission_classes = [IsAuthenticated, IsProviderAdminOrSupplierRep]
 
@@ -180,7 +184,7 @@ class SupplierDecideOnPMChangeRequestView(APIView):
                 raise ValidationError("Invalid extension payload.")
 
             order.end_date = new_end
-            order.man_days = int(order.man_days) + int(add_days)
+            order.man_days = int(order.man_days or 0) + int(add_days)
             order.save(update_fields=["end_date", "man_days", "updated_at"])
 
             log_action(
@@ -193,16 +197,17 @@ class SupplierDecideOnPMChangeRequestView(APIView):
             )
 
         elif cr.change_type == "SUBSTITUTION":
-            new_spec_id = cr.payload.get("new_specialist_id")
-            if not new_spec_id:
+            # Supplier decision endpoint is PM-initiated only, but keep supported for completeness
+            new_user_id = cr.payload.get("new_specialist_user_id")
+            if not new_user_id:
                 raise ValidationError("Invalid substitution payload.")
 
-            new_spec = get_object_or_404(Specialist, id=new_spec_id)
-            if new_spec.provider_id != user.provider_id:
+            new_user = get_object_or_404(ProviderUser, id=new_user_id)
+            if new_user.provider_id != user.provider_id:
                 raise PermissionDenied("Substitution specialist must belong to same provider.")
 
-            order.specialist = new_spec
-            order.save(update_fields=["specialist", "updated_at"])
+            order.specialist_user = new_user
+            order.save(update_fields=["specialist_user", "updated_at"])
 
             log_action(
                 provider_id=user.provider_id,
@@ -210,7 +215,7 @@ class SupplierDecideOnPMChangeRequestView(APIView):
                 action="SERVICE_ORDER_SUBSTITUTED",
                 entity_type="service_order",
                 entity_id=order.id,
-                details={"new_specialist_id": str(new_spec.id), "new_specialist_name": new_spec.full_name},
+                details={"new_specialist_user_id": str(new_user.id), "new_specialist_user_name": new_user.full_name},
             )
 
         else:
@@ -297,17 +302,21 @@ class PMDecideOnSupplierSubstitutionView(APIView):
         if decision == "accept":
             # Apply substitution to order
             order = cr.service_order
-            new_spec_id = cr.payload.get("new_specialist_id")
-            if not new_spec_id:
+            new_user_id = cr.payload.get("new_specialist_user_id")
+            if not new_user_id:
                 raise ValidationError("Invalid substitution payload.")
 
-            new_spec = get_object_or_404(Specialist, id=new_spec_id)
+            new_user = get_object_or_404(ProviderUser, id=new_user_id)
             # PM should allow only same provider swap
-            if new_spec.provider_id != order.provider_id:
+            if new_user.provider_id != order.provider_id:
                 raise ValidationError("Substitution specialist must belong to same provider.")
+            if not new_user.is_active:
+                raise ValidationError("Substitution specialist user is inactive.")
+            if not new_user.has_system_role("Specialist"):
+                raise ValidationError("Substitution specialist must have SYSTEM role 'Specialist'.")
 
-            order.specialist = new_spec
-            order.save(update_fields=["specialist", "updated_at"])
+            order.specialist_user = new_user
+            order.save(update_fields=["specialist_user", "updated_at"])
 
             cr.status = "APPROVED"
             cr.payload["pm_note"] = (request.data or {}).get("note", "")
