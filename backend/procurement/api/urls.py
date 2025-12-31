@@ -4,7 +4,7 @@ from .views import (
     ServiceRequestListView, ServiceRequestDetailView,
     CreateOfferForServiceRequestView,
     OfferPatchView, OfferWithdrawView,
-    OfferListView, OfferDetailView, OfferDetailViewTenantSafe, MyOffersForRequestView,
+    OfferListView, MyOffersForRequestView,
     ServiceOrderListView, ServiceOrderDetailView,
     ActivityLogListView,
 )
@@ -16,13 +16,13 @@ urlpatterns = [
 
     # offers (create/edit/withdraw)
     path("service-requests/<uuid:sr_id>/offers/", CreateOfferForServiceRequestView.as_view(), name="offer-create"),
-    path("offers/<uuid:offer_id>/", OfferDetailView.as_view(), name="offer-detail"),
+    #path("offers/<uuid:offer_id>/", OfferDetailView.as_view(), name="offer-detail"),
     path("offers/<uuid:offer_id>/edit/", OfferPatchView.as_view(), name="offer-edit"),
     path("offers/<uuid:offer_id>/withdraw/", OfferWithdrawView.as_view(), name="offer-withdraw"),
 
     # offers (tracking)
     path("offers/", OfferListView.as_view(), name="offers-list"),
-    path("offers/<uuid:pk>/", OfferDetailViewTenantSafe.as_view(), name="offer-detail-tenant-safe"),
+    #path("offers/<uuid:pk>/", OfferDetailViewTenantSafe.as_view(), name="offer-detail-tenant-safe"),
     path("service-requests/<uuid:sr_id>/my-offers/", MyOffersForRequestView.as_view(), name="my-offers-for-request"),
 
     # service orders (view)
