@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 from rest_framework import serializers
+from django.db import models
 
 from procurement.models import (
     ServiceRequest, ServiceRequestRequirement, ServiceRequestLanguage,
     ServiceOffer, ServiceOfferMatchDetail, ServiceOrder, ActivityLog
 )
-from providers.models import Specialist, SpecialistRoleCapability
-from accounts.models import RoleRatePolicy, UserRoleAssignment
+from accounts.models import RoleRatePolicy, UserRoleAssignment, ProviderUser, RoleDefinition
 
 
 class ServiceRequestRequirementSerializer(serializers.ModelSerializer):
@@ -43,6 +43,7 @@ class ServiceRequestListSerializer(serializers.ModelSerializer):
         return {
             "id": obj.role_definition.id,
             "name": obj.role_definition.name,
+            "role_type": obj.role_definition.role_type,
             "domain": obj.role_definition.domain,
             "group_name": obj.role_definition.group_name,
         }
@@ -76,6 +77,7 @@ class ServiceRequestDetailSerializer(serializers.ModelSerializer):
         return {
             "id": obj.role_definition.id,
             "name": obj.role_definition.name,
+            "role_type": obj.role_definition.role_type,
             "domain": obj.role_definition.domain,
             "group_name": obj.role_definition.group_name,
         }
@@ -93,7 +95,7 @@ class ServiceOfferSerializer(serializers.ModelSerializer):
             "service_request",
             "provider",
             "submitted_by_user",
-            "specialist",
+            "specialist_user",
             "daily_rate_eur",
             "travel_cost_per_onsite_day_eur",
             "total_cost_eur",
@@ -111,24 +113,15 @@ class ServiceOfferSerializer(serializers.ModelSerializer):
 
 
 class OfferCreateSerializer(serializers.Serializer):
-    specialist_id = serializers.UUIDField()
+    specialist_user_id = serializers.UUIDField()
     daily_rate_eur = serializers.DecimalField(max_digits=10, decimal_places=2)
     travel_cost_per_onsite_day_eur = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, default=Decimal("0.00"))
     contractual_relationship = serializers.ChoiceField(choices=["EMPLOYEE", "FREELANCER", "SUBCONTRACTOR"])
     subcontractor_company_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
-    # optional manual override if specialist capability not present
-    experience_level = serializers.ChoiceField(
-        choices=UserRoleAssignment.ExperienceLevel.choices, required=False, allow_null=True
-    )
-    technology_level = serializers.ChoiceField(
-        choices=UserRoleAssignment.TechnologyLevel.choices, required=False, allow_null=True
-    )
-
 
 class OfferPatchSerializer(serializers.Serializer):
-    # allow editing values
-    specialist_id = serializers.UUIDField(required=False)
+    specialist_user_id = serializers.UUIDField(required=False)
     daily_rate_eur = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     travel_cost_per_onsite_day_eur = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     contractual_relationship = serializers.ChoiceField(choices=["EMPLOYEE", "FREELANCER", "SUBCONTRACTOR"], required=False)
@@ -141,35 +134,33 @@ def compute_total_cost(sr: ServiceRequest, daily_rate: Decimal, travel_per_day: 
     return (daily_rate * man_days) + (travel_per_day * onsite_days)
 
 
-def pick_levels_for_policy(sr: ServiceRequest, specialist: Specialist, payload: dict):
+def get_job_levels_for_user(sr: ServiceRequest, specialist_user: ProviderUser):
     """
-    Prefer SpecialistRoleCapability for (specialist + sr.role_definition).
-    Fallback to payload provided levels.
+    Determine experience/tech level from the user's JOB role assignment matching sr.role_definition.
+    sr.role_definition must be a JOB role.
     """
-    if sr.role_definition_id:
-        cap = SpecialistRoleCapability.objects.filter(
-            specialist=specialist,
-            role_definition_id=sr.role_definition_id,
-        ).first()
-        if cap:
-            return cap.experience_level, cap.technology_level
-
-    exp = payload.get("experience_level")
-    tech = payload.get("technology_level")
-    return exp, tech
-
-
-def validate_rate_policy(sr: ServiceRequest, daily_rate: Decimal, exp_level: str | None, tech_level: str | None):
     if not sr.role_definition_id:
-        # no role specified -> cannot check policy properly
         raise serializers.ValidationError("Service request has no role_definition; cannot validate rate policy.")
 
-    if not exp_level or not tech_level:
+    role_def: RoleDefinition = sr.role_definition
+    if role_def.role_type != RoleDefinition.RoleType.JOB:
+        raise serializers.ValidationError("Service request role_definition must be a JOB role (role_type=JOB).")
+
+    assignment = UserRoleAssignment.objects.filter(
+        user=specialist_user,
+        role_definition=role_def,
+        status=UserRoleAssignment.Status.ACTIVE,
+    ).order_by("-created_at").first()
+
+    if not assignment or not assignment.experience_level or not assignment.technology_level:
         raise serializers.ValidationError(
-            "Cannot determine experience_level/technology_level for rate policy. "
-            "Add SpecialistRoleCapability or pass experience_level + technology_level in request."
+            f"Selected user does not have an ACTIVE JOB role assignment for '{role_def.name}' with exp/tech levels."
         )
 
+    return assignment.experience_level, assignment.technology_level
+
+
+def validate_rate_policy(sr: ServiceRequest, daily_rate: Decimal, exp_level: str, tech_level: str):
     policy = RoleRatePolicy.objects.filter(
         role_definition_id=sr.role_definition_id,
         experience_level=exp_level,
@@ -190,7 +181,8 @@ def validate_rate_policy(sr: ServiceRequest, daily_rate: Decimal, exp_level: str
 
 class OfferListSerializer(serializers.ModelSerializer):
     service_request_title = serializers.CharField(source="service_request.title", read_only=True)
-    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    specialist_name = serializers.CharField(source="specialist_user.full_name", read_only=True)
+    specialist_email = serializers.CharField(source="specialist_user.email", read_only=True)
     submitted_by_name = serializers.CharField(source="submitted_by_user.full_name", read_only=True)
     submitted_by_email = serializers.CharField(source="submitted_by_user.email", read_only=True)
 
@@ -204,8 +196,9 @@ class OfferListSerializer(serializers.ModelSerializer):
             "submitted_by_user",
             "submitted_by_name",
             "submitted_by_email",
-            "specialist",
+            "specialist_user",
             "specialist_name",
+            "specialist_email",
             "daily_rate_eur",
             "travel_cost_per_onsite_day_eur",
             "total_cost_eur",
@@ -220,7 +213,7 @@ class OfferListSerializer(serializers.ModelSerializer):
 
 class ServiceOrderListSerializer(serializers.ModelSerializer):
     service_request_title = serializers.CharField(source="service_request.title", read_only=True)
-    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    specialist_name = serializers.CharField(source="specialist_user.full_name", read_only=True)
     supplier_rep_name = serializers.CharField(source="supplier_representative_user.full_name", read_only=True)
 
     class Meta:
@@ -234,7 +227,7 @@ class ServiceOrderListSerializer(serializers.ModelSerializer):
             "provider",
             "supplier_representative_user",
             "supplier_rep_name",
-            "specialist",
+            "specialist_user",
             "specialist_name",
             "role_definition",
             "start_date",
@@ -248,7 +241,7 @@ class ServiceOrderListSerializer(serializers.ModelSerializer):
 
 class ServiceOrderDetailSerializer(serializers.ModelSerializer):
     service_request_title = serializers.CharField(source="service_request.title", read_only=True)
-    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    specialist_name = serializers.CharField(source="specialist_user.full_name", read_only=True)
     supplier_rep_name = serializers.CharField(source="supplier_representative_user.full_name", read_only=True)
     accepted_offer_id = serializers.UUIDField(source="accepted_offer.id", read_only=True)
 
@@ -264,7 +257,7 @@ class ServiceOrderDetailSerializer(serializers.ModelSerializer):
             "provider",
             "supplier_representative_user",
             "supplier_rep_name",
-            "specialist",
+            "specialist_user",
             "specialist_name",
             "role_definition",
             "start_date",

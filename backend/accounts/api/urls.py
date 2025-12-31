@@ -1,12 +1,24 @@
 from django.urls import path
-from .views import MeView, ProviderUsersListView, AssignRoleView, RevokeRoleView
-#  to get the file in the parent folder
-# from accounts.views import MeView, ProviderUsersListView, AssignRoleView, RevokeRoleView
+from .views import (
+    MeView,
+    MeProfilePatchView,
+    MeServiceOrdersView,
+    ProviderUsersListView,
+    AssignRoleView,
+    RevokeRoleView,
+    ActivateUserView,
+    DeactivateUserView,
+)
 
 urlpatterns = [
-    path("me/", MeView.as_view(), name="me"),
-    path("users/", ProviderUsersListView.as_view(), name="provider-users"),
-    path("users/<uuid:user_id>/roles/assign/", AssignRoleView.as_view(), name="assign-role"),
-    path("users/<uuid:user_id>/roles/revoke/", RevokeRoleView.as_view(), name="revoke-role"),
-    
+    path("me/", MeView.as_view()),
+    path("me/profile/", MeProfilePatchView.as_view()),
+    path("me/service-orders/", MeServiceOrdersView.as_view()),
+
+    path("users/", ProviderUsersListView.as_view()),
+    path("users/<uuid:user_id>/roles/assign/", AssignRoleView.as_view()),
+    path("users/<uuid:user_id>/roles/revoke/", RevokeRoleView.as_view()),
+
+    path("users/<uuid:user_id>/activate/", ActivateUserView.as_view()),
+    path("users/<uuid:user_id>/deactivate/", DeactivateUserView.as_view()),
 ]
