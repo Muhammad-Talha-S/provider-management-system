@@ -1,22 +1,32 @@
-from django.contrib.auth import authenticate
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .models import User
 
 
-class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # Force email field in request body
-    email = serializers.EmailField()
+class UserSerializer(serializers.ModelSerializer):
+    providerId = serializers.CharField(source="provider_id")
 
-    def validate(self, attrs):
-        email = attrs.get("email")
-        password = attrs.get("password")
+    class Meta:
+        model = User
+        fields = [
+            "id", "name", "email",
+            "role", "providerId",
+            "status", "created_at",
 
-        user = authenticate(request=self.context.get("request"), email=email, password=password)
-        if not user:
-            raise serializers.ValidationError("Invalid email or password.")
+            "photo", "material_number",
+            "experience_level", "technology_level",
+            "performance_grade", "average_daily_rate",
+            "skills", "availability",
+            "service_requests_completed", "service_orders_active",
+        ]
 
-        if not user.is_active:
-            raise serializers.ValidationError("User is inactive.")
 
-        refresh = self.get_token(user)
-        return {"refresh": str(refresh), "access": str(refresh.access_token)}
+class UserRoleUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["role"]
+
+    def validate_role(self, value):
+        allowed = {"Provider Admin", "Supplier Representative", "Contract Coordinator", "Specialist"}
+        if value not in allowed:
+            raise serializers.ValidationError("Invalid role.")
+        return value

@@ -1,21 +1,23 @@
-from __future__ import annotations
-
-import uuid
 from django.db import models
 
-
 class Provider(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    STATUS_CHOICES = [("Active", "Active"), ("Inactive", "Inactive")]
 
+    # Using your IDs like "P001" as primary key keeps frontend mapping simple
+    id = models.CharField(primary_key=True, max_length=10)
     name = models.CharField(max_length=255)
-    legal_name = models.CharField(max_length=255, blank=True, null=True)
-    tax_id = models.CharField(max_length=120, blank=True, null=True)
 
-    country = models.CharField(max_length=100, blank=True, null=True)
-    address = models.TextField(blank=True, null=True)
+    contact_name = models.CharField(max_length=255)
+    contact_email = models.EmailField()
+    contact_phone = models.CharField(max_length=50)
+    address = models.TextField()
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    email_notifications = models.BooleanField(default=True)
+    sms_notifications = models.BooleanField(default=False)
+    preferred_language = models.CharField(max_length=30, default="English")
 
-    def __str__(self) -> str:
-        return self.name
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
+    created_at = models.DateField()
+
+    def __str__(self):
+        return f"{self.id} - {self.name}"
