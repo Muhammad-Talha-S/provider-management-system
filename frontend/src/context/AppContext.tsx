@@ -1,67 +1,104 @@
-import React, { createContext, useContext, useState, type ReactNode } from 'react';
-import type { User, Provider } from '../types';
-import { mockUsers, mockProviders } from '../data/mockData';
+// src/context/AppContext.tsx
+import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { User, Provider } from "../types";
+import { loginRequest } from "../api/auth";
+
+type AuthTokens = { access: string; refresh: string };
 
 interface AppContextType {
   currentUser: User | null;
   currentProvider: Provider | null;
   isAuthenticated: boolean;
+  tokens: AuthTokens | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   setCurrentUser: (user: User) => void;
+  setCurrentProvider: (provider: Provider | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const STORAGE_KEY = "pms_auth"; // localStorage key
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentProvider, setCurrentProvider] = useState<Provider | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [tokens, setTokens] = useState<AuthTokens | null>(null);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Find user by email
-    const user = mockUsers.find(u => u.email === email);
-    
-    if (!user) {
-      return { success: false, error: 'Invalid credentials' };
+  const isAuthenticated = !!tokens?.access && !!currentUser;
+
+  // Restore session on refresh
+  useEffect(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw) as { tokens: AuthTokens; user: User; provider: Provider | null };
+      setTokens(parsed.tokens);
+      setCurrentUser(parsed.user);
+      setCurrentProvider(parsed.provider ?? null);
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
     }
+  }, []);
 
-    if (user.status === 'Inactive') {
-      return { success: false, error: 'User account is inactive. Please contact your administrator.' };
+  // Persist session
+  useEffect(() => {
+    if (!tokens || !currentUser) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
     }
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ tokens, user: currentUser, provider: currentProvider })
+    );
+  }, [tokens, currentUser, currentProvider]);
 
-    // Check password (in production, this would be hashed comparison)
-    if (user.password !== password) {
-      return { success: false, error: 'Invalid credentials' };
+  const login = async (email: string, password: string) => {
+    try {
+      const data = await loginRequest(email, password);
+
+      // Optional: keep your inactive check, but backend already should handle it
+      if ((data.user as any)?.status === "Inactive") {
+        return { success: false, error: "User account is inactive. Please contact your administrator." };
+      }
+
+      setTokens({ access: data.access, refresh: data.refresh });
+      setCurrentUser(data.user);
+      setCurrentProvider(data.provider ?? null);
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message || "Login failed" };
     }
-
-    // Find provider
-    const provider = mockProviders.find(p => p.id === user.providerId);
-    
-    setCurrentUser(user);
-    setCurrentProvider(provider || null);
-    setIsAuthenticated(true);
-
-    return { success: true };
   };
 
   const logout = () => {
+    setTokens(null);
     setCurrentUser(null);
     setCurrentProvider(null);
-    setIsAuthenticated(false);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
-  return (
-    <AppContext.Provider value={{ currentUser, currentProvider, isAuthenticated, login, logout, setCurrentUser }}>
-      {children}
-    </AppContext.Provider>
+  const value = useMemo(
+    () => ({
+      currentUser,
+      currentProvider,
+      isAuthenticated,
+      tokens,
+      login,
+      logout,
+      setCurrentUser,
+      setCurrentProvider,
+    }),
+    [currentUser, currentProvider, isAuthenticated, tokens]
   );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
 export const useApp = () => {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within AppProvider');
-  }
+  if (!context) throw new Error("useApp must be used within AppProvider");
   return context;
 };
