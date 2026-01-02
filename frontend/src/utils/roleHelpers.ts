@@ -1,15 +1,11 @@
 import type { User, UserRole } from '../types';
 
 export const hasRole = (user: User, role: UserRole): boolean => {
-  return user.roles.includes(role);
+  return user.role === role;
 };
 
 export const hasAnyRole = (user: User, roles: UserRole[]): boolean => {
-  return roles.some(role => user.roles.includes(role));
-};
-
-export const hasOnlyRole = (user: User, role: UserRole): boolean => {
-  return user.roles.length === 1 && user.roles[0] === role;
+  return roles.includes(user.role);
 };
 
 export const canViewServiceRequests = (user: User): boolean => {
@@ -43,5 +39,13 @@ export const canManageSpecialists = (user: User): boolean => {
 };
 
 export const isSpecialistOnly = (user: User): boolean => {
-  return hasOnlyRole(user, 'Specialist');
+  return user.role === 'Specialist';
+};
+
+export const canEditUserProfile = (user: User): boolean => {
+  return user.role === 'Provider Admin';
+};
+
+export const canChangeUserRole = (user: User): boolean => {
+  return user.role === 'Provider Admin';
 };
