@@ -1,12 +1,37 @@
 // User roles - Specialist is now a role, not a separate entity
 export type UserRole = 'Provider Admin' | 'Supplier Representative' | 'Contract Coordinator' | 'Specialist';
 
+// Provider type
+export interface Provider {
+  id: string;
+  name: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+  communicationPreferences: {
+    emailNotifications: boolean;
+    smsNotifications: boolean;
+    preferredLanguage: string;
+  };
+  metrics: {
+    totalUsers: number;
+    activeSpecialists: number;
+    activeServiceOrders: number;
+    activeContracts: number;
+  };
+  status: 'Active' | 'Inactive';
+  createdAt: string;
+}
+
 // User type - unified model that includes specialist information
 export interface User {
   id: string;
   name: string;
   email: string;
-  roles: UserRole[]; // Users can have multiple roles
+  password?: string; // For authentication (in real app, this would be hashed)
+  role: UserRole; // Single role per user
+  providerId: string; // Each user belongs to one provider
   status: 'Active' | 'Inactive';
   createdAt: string;
   
@@ -18,6 +43,7 @@ export interface User {
   performanceGrade?: 'A' | 'B' | 'C' | 'D';
   averageDailyRate?: number;
   skills?: string[];
+  availability?: 'Available' | 'Partially Booked' | 'Fully Booked';
   serviceRequestsCompleted?: number;
   serviceOrdersActive?: number;
 }
