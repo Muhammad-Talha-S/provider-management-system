@@ -10,8 +10,8 @@ import { Building2, AlertCircle } from "lucide-react";
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useApp();
-  const [email, setEmail] = useState("thomas.mueller@techprovide.com");
-  const [password, setPassword] = useState("supplier123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
