@@ -2,13 +2,14 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers, generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
 from .serializers import UserSerializer, UserRoleUpdateSerializer
 from providers.serializers import ProviderSerializer
 from .permissions import IsProviderAdmin
+
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -64,3 +65,14 @@ class UserRoleUpdateView(generics.UpdateAPIView):
             return Response({"detail": "You cannot change your own role."}, status=status.HTTP_400_BAD_REQUEST)
 
         return super().patch(request, *args, **kwargs)
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            "user": UserSerializer(user).data,
+            "provider": ProviderSerializer(user.provider).data
+        })
