@@ -6,10 +6,14 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
-from .serializers import UserSerializer, UserRoleUpdateSerializer
+from .serializers import UserSerializer, UserRoleUpdateSerializer, UserCreateSerializer, UserUpdateSerializer
 from providers.serializers import ProviderSerializer
-from .permissions import IsProviderAdmin
+from .permissions import IsProviderAdmin, IsProviderMemberReadOnly, IsSameProviderOrSelf
 
+from datetime import date
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -76,3 +80,87 @@ class MeView(APIView):
             "user": UserSerializer(user).data,
             "provider": ProviderSerializer(user.provider).data
         })
+
+class UserListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = User.objects.filter(provider_id=self.request.user.provider_id).order_by("id")
+
+        # optional filtering
+        role = self.request.query_params.get("role")
+        if role:
+            qs = qs.filter(role=role)
+
+        return qs
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return UserCreateSerializer
+        return UserSerializer
+
+    def list(self, request, *args, **kwargs):
+        # Specialists should not list all users (specialist-only view)
+        if request.user.role == "Specialist":
+            raise PermissionDenied("Not allowed.")
+        return super().list(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        # Only Provider Admin can create users
+        if self.request.user.role != "Provider Admin":
+            raise PermissionDenied("Only Provider Admin can create users.")
+
+        # attach provider and default created_at if missing
+        created_at = serializer.validated_data.get("created_at") or date.today()
+        serializer.save(provider=self.request.user.provider, created_at=created_at)
+
+
+class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = User.objects.all()
+    lookup_field = "id"
+    permission_classes = [IsAuthenticated, IsSameProviderOrSelf]
+
+    def get_serializer_class(self):
+        if self.request.method in ["PATCH", "PUT"]:
+            return UserUpdateSerializer
+        return UserSerializer
+
+    def perform_update(self, serializer):
+        target = self.get_object()
+
+        # Provider Admin can edit anyone in provider
+        if self.request.user.role == "Provider Admin":
+            if target.provider_id != self.request.user.provider_id:
+                raise PermissionDenied("Not allowed.")
+            serializer.save()
+            return
+
+        # Non-admin can only edit self
+        if target.id != self.request.user.id:
+            raise PermissionDenied("Not allowed.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Only Provider Admin can delete, within provider
+        if self.request.user.role != "Provider Admin":
+            raise PermissionDenied("Only Provider Admin can delete users.")
+        if instance.provider_id != self.request.user.provider_id:
+            raise PermissionDenied("Not allowed.")
+        instance.delete()
+
+
+class SpecialistListView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return User.objects.filter(
+            provider_id=self.request.user.provider_id,
+            role="Specialist"
+        ).order_by("id")
+
+    def list(self, request, *args, **kwargs):
+        # Specialist should not list all specialists (keep specialist-only view clean)
+        if request.user.role == "Specialist":
+            raise PermissionDenied("Not allowed.")
+        return super().list(request, *args, **kwargs)

@@ -1,36 +1,6 @@
 from rest_framework import serializers
 from .models import Provider
 
-class ProviderSerializer(serializers.ModelSerializer):
-    communicationPreferences = serializers.SerializerMethodField()
-    metrics = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Provider
-        fields = [
-            "id", "name",
-            "contact_name", "contact_email", "contact_phone", "address",
-            "communicationPreferences", "metrics",
-            "status", "created_at",
-        ]
-
-    def get_communicationPreferences(self, obj):
-        return {
-            "emailNotifications": obj.email_notifications,
-            "smsNotifications": obj.sms_notifications,
-            "preferredLanguage": obj.preferred_language,
-        }
-
-    def get_metrics(self, obj):
-        # For Milestone 1: return zeros or lightweight counts
-        # Later, compute from related objects (contracts/orders/etc).
-        return {
-            "totalUsers": obj.users.count(),
-            "activeSpecialists": obj.users.filter(role="Specialist", status="Active").count(),
-            "activeServiceOrders": 0,
-            "activeContracts": 0,
-        }
-
 
 class ProviderSerializer(serializers.ModelSerializer):
     contactName = serializers.CharField(source="contact_name")
@@ -44,8 +14,11 @@ class ProviderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Provider
         fields = [
-            "id", "name",
-            "contactName", "contactEmail", "contactPhone",
+            "id",
+            "name",
+            "contactName",
+            "contactEmail",
+            "contactPhone",
             "address",
             "communicationPreferences",
             "metrics",
@@ -79,12 +52,17 @@ class ProviderUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Provider
         fields = [
-            "name", "contactName", "contactEmail", "contactPhone",
-            "address", "communicationPreferences", "status"
+            "name",
+            "contactName",
+            "contactEmail",
+            "contactPhone",
+            "address",
+            "communicationPreferences",
         ]
 
     def update(self, instance, validated_data):
         comm = validated_data.pop("communicationPreferences", None)
+
         for k, v in validated_data.items():
             setattr(instance, k, v)
 
