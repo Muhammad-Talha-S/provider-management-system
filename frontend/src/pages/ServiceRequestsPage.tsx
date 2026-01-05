@@ -1,23 +1,61 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { mockServiceRequests, mockContracts } from '../data/mockData';
-import { StatusBadge } from '../components/StatusBadge';
-import { FileText, Search, Filter, Calendar, Users, MapPin } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { StatusBadge } from "../components/StatusBadge";
+import { Search, Filter, Calendar, MapPin } from "lucide-react";
+import { useApp } from "../context/AppContext";
+import { getServiceRequests } from "../api/serviceRequests";
 
 export const ServiceRequestsPage: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const { tokens, currentUser } = useApp();
 
-  const filteredRequests = mockServiceRequests.filter((request) => {
-    const matchesSearch =
-      request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.role.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Role restriction: Contract Coordinator should not access this page
+  useEffect(() => {
+    if (currentUser?.role === "Contract Coordinator") {
+      setError("You do not have access to Service Requests.");
+      setLoading(false);
+      return;
+    }
+  }, [currentUser?.role]);
+
+  useEffect(() => {
+    if (!tokens?.access) return;
+    if (currentUser?.role === "Contract Coordinator") return;
+
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getServiceRequests(tokens.access, statusFilter);
+        setRows(data);
+      } catch (e: any) {
+        setError(e?.message || "Failed to load service requests");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
+  }, [tokens?.access, statusFilter, currentUser?.role]);
+
+  const filteredRequests = useMemo(() => {
+    return rows.filter((request) => {
+      const matchesSearch =
+        request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        request.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        request.role.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesStatus = statusFilter === "all" || request.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [rows, searchTerm, statusFilter]);
 
   return (
     <div className="p-8">
@@ -32,7 +70,10 @@ export const ServiceRequestsPage: React.FC = () => {
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <Search
+              size={20}
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+            />
             <input
               type="text"
               placeholder="Search requests..."
@@ -51,36 +92,57 @@ export const ServiceRequestsPage: React.FC = () => {
               <option value="all">All Status</option>
               <option value="Open">Open</option>
               <option value="Closed">Closed</option>
+              <option value="Draft">Draft</option>
             </select>
           </div>
         </div>
       </div>
 
+      {loading && <div className="text-gray-600">Loading service requests...</div>}
+      {error && !loading && <div className="text-red-600">{error}</div>}
+
       {/* Requests Table */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Request ID</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Title</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Duration</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Location</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredRequests.map((request) => {
-                const contract = mockContracts.find((c) => c.id === request.linkedContractId);
-                return (
+      {!loading && !error && (
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Request ID
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Title
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Duration
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Location
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredRequests.map((request) => (
                   <tr key={request.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-900">{request.id}</td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">{request.title}</div>
-                      <div className="text-xs text-gray-500 mt-1">Contract: {contract?.title || 'N/A'}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Contract: {request.linkedContractId || "N/A"}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-700">{request.role}</td>
                     <td className="px-6 py-4">
@@ -104,25 +166,21 @@ export const ServiceRequestsPage: React.FC = () => {
                       <StatusBadge status={request.status} />
                     </td>
                     <td className="px-6 py-4">
-                      <Link
-                        to={`/service-requests/${request.id}`}
-                        className="text-sm text-blue-600 hover:text-blue-700"
-                      >
+                      <Link to={`/service-requests/${request.id}`} className="text-sm text-blue-600 hover:text-blue-700">
                         View Details
                       </Link>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {filteredRequests.length === 0 && (
-          <div className="p-8 text-center text-gray-500">
-            No service requests found matching your criteria
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
+
+          {filteredRequests.length === 0 && (
+            <div className="p-8 text-center text-gray-500">No service requests found matching your criteria</div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

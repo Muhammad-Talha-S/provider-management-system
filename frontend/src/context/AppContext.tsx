@@ -1,98 +1,113 @@
-// src/context/AppContext.tsx
-import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { User, Provider } from "../types";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import type { Provider, User } from "../types";
 import { loginRequest } from "../api/auth";
+import { meRequest, refreshRequest } from "../api/session";
 
-type AuthTokens = { access: string; refresh: string };
+type Tokens = { access: string; refresh: string };
 
 interface AppContextType {
   currentUser: User | null;
   currentProvider: Provider | null;
+  tokens: Tokens | null;
   isAuthenticated: boolean;
-  tokens: AuthTokens | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  setCurrentUser: (user: User) => void;
-  setCurrentProvider: (provider: Provider | null) => void;
+
+  setCurrentUser: (u: User | null) => void;
+  setCurrentProvider: (p: Provider | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = "pms_auth"; // localStorage key
+const LS_ACCESS = "access_token";
+const LS_REFRESH = "refresh_token";
 
-export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentProvider, setCurrentProvider] = useState<Provider | null>(null);
-  const [tokens, setTokens] = useState<AuthTokens | null>(null);
+  const [tokens, setTokens] = useState<Tokens | null>(null);
+  const [booting, setBooting] = useState(true);
 
   const isAuthenticated = !!tokens?.access && !!currentUser;
 
-  // Restore session on refresh
-  useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-
-    try {
-      const parsed = JSON.parse(raw) as { tokens: AuthTokens; user: User; provider: Provider | null };
-      setTokens(parsed.tokens);
-      setCurrentUser(parsed.user);
-      setCurrentProvider(parsed.provider ?? null);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, []);
-
-  // Persist session
-  useEffect(() => {
-    if (!tokens || !currentUser) {
-      localStorage.removeItem(STORAGE_KEY);
-      return;
-    }
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ tokens, user: currentUser, provider: currentProvider })
-    );
-  }, [tokens, currentUser, currentProvider]);
-
-  const login = async (email: string, password: string) => {
-    try {
-      const data = await loginRequest(email, password);
-
-      // Optional: keep your inactive check, but backend already should handle it
-      if ((data.user as any)?.status === "Inactive") {
-        return { success: false, error: "User account is inactive. Please contact your administrator." };
-      }
-
-      setTokens({ access: data.access, refresh: data.refresh });
-      setCurrentUser(data.user);
-      setCurrentProvider(data.provider ?? null);
-
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e?.message || "Login failed" };
-    }
-  };
-
   const logout = () => {
+    localStorage.removeItem(LS_ACCESS);
+    localStorage.removeItem(LS_REFRESH);
     setTokens(null);
     setCurrentUser(null);
     setCurrentProvider(null);
-    localStorage.removeItem(STORAGE_KEY);
   };
+
+  const login = async (email: string, password: string) => {
+    const data = await loginRequest(email, password);
+
+    localStorage.setItem(LS_ACCESS, data.access);
+    localStorage.setItem(LS_REFRESH, data.refresh);
+
+    setTokens({ access: data.access, refresh: data.refresh });
+    setCurrentUser(data.user);
+    setCurrentProvider(data.provider);
+  };
+
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const access = localStorage.getItem(LS_ACCESS);
+        const refresh = localStorage.getItem(LS_REFRESH);
+
+        if (!access || !refresh) {
+          setBooting(false);
+          return;
+        }
+
+        // Try /me with current access
+        try {
+          const me = await meRequest(access);
+          setTokens({ access, refresh });
+          setCurrentUser(me.user);
+          setCurrentProvider(me.provider);
+          setBooting(false);
+          return;
+        } catch {
+          // Access may be expired → refresh
+        }
+
+        const refreshed = await refreshRequest(refresh);
+        localStorage.setItem(LS_ACCESS, refreshed.access);
+
+        const me2 = await meRequest(refreshed.access);
+        setTokens({ access: refreshed.access, refresh });
+        setCurrentUser(me2.user);
+        setCurrentProvider(me2.provider);
+      } catch {
+        logout();
+      } finally {
+        setBooting(false);
+      }
+    };
+
+    restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const value = useMemo(
     () => ({
       currentUser,
       currentProvider,
-      isAuthenticated,
       tokens,
+      isAuthenticated,
       login,
       logout,
       setCurrentUser,
       setCurrentProvider,
     }),
-    [currentUser, currentProvider, isAuthenticated, tokens]
+    [currentUser, currentProvider, tokens, isAuthenticated]
   );
+
+  if (booting) {
+    return <div className="p-8 text-gray-600">Loading session...</div>;
+  }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
