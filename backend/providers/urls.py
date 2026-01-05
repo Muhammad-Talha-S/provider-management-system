@@ -1,7 +1,7 @@
 from django.urls import path
-from .views import ProviderMeView, ProviderMeUpdateView
+from .views import ProviderMeView
+
 
 urlpatterns = [
-    path("providers/me/", ProviderMeView.as_view(), name="provider_me"),
-    path("providers/me/update/", ProviderMeUpdateView.as_view(), name="provider_me_update"),
+    path("providers/me/", ProviderMeView.as_view(), name="provider-me"),
 ]
