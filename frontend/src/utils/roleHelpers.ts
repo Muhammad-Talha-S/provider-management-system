@@ -4,9 +4,10 @@ export const hasRole = (user: User, role: UserRole): boolean => {
   return user.role === role;
 };
 
-export const hasAnyRole = (user: User, roles: UserRole[]): boolean => {
+export function hasAnyRole(user: User | null | undefined, roles: string[]) {
+  if (!user) return false;
   return roles.includes(user.role);
-};
+}
 
 export const canViewServiceRequests = (user: User): boolean => {
   // Contract Coordinator cannot see Service Requests

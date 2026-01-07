@@ -32,7 +32,7 @@ export const ServiceRequestsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await getServiceRequests(tokens.access, statusFilter);
+        const data = await getServiceRequests(tokens.access);
         setRows(data);
       } catch (e: any) {
         setError(e?.message || "Failed to load service requests");
