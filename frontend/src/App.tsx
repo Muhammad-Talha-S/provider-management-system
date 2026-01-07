@@ -18,6 +18,7 @@ import { MyOrders } from "./pages/MyOrders";
 import { ContractDetail } from "./pages/ContractDetail";
 import { ProviderPage } from "./pages/ProviderPage";
 import { CreateServiceOrder } from "./pages/CreateServiceOrder";
+import { CreateServiceOffer } from "./pages/CreateServiceOffer";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useApp();
@@ -66,6 +67,7 @@ const AppContent: React.FC = () => {
           <Route path="/provider" element={<ProtectedRoute><ProviderPage /></ProtectedRoute>} />
           <Route path="/activity-log" element={<ProtectedRoute><ActivityLogPage /></ProtectedRoute>} />
           <Route path="/my-orders" element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
+          <Route path="/service-offers/create" element={<ProtectedRoute><CreateServiceOffer /></ProtectedRoute>}/>
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

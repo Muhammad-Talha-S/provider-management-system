@@ -1,20 +1,39 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import { mockServiceOrders } from '../data/mockData';
-import { StatusBadge } from '../components/StatusBadge';
-import { Package, Calendar, MapPin } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+import { StatusBadge } from "../components/StatusBadge";
+import { Package, Calendar, MapPin } from "lucide-react";
+import { getServiceOrders } from "../api/serviceOrders";
+import type { ServiceOrder } from "../api/serviceOrders";
 
 export const MyOrders: React.FC = () => {
-  const { currentUser } = useApp();
-  
-  // Only show orders assigned to the current specialist
-  const myOrders = mockServiceOrders.filter(
-    (order) => order.assignedSpecialistId === currentUser.id
-  );
+  const { tokens } = useApp();
+  const [rows, setRows] = useState<ServiceOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const activeOrders = myOrders.filter((o) => o.status === 'Active');
-  const completedOrders = myOrders.filter((o) => o.status === 'Completed');
+  useEffect(() => {
+    if (!tokens?.access) return;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getServiceOrders(tokens.access);
+        setRows(data);
+      } catch (e: any) {
+        setError(e?.message || "Failed to load orders");
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, [tokens?.access]);
+
+  const activeOrders = useMemo(() => rows.filter((o) => o.status === "Active"), [rows]);
+  const completedOrders = useMemo(() => rows.filter((o) => o.status === "Completed"), [rows]);
+
+  if (loading) return <div className="p-8 text-gray-600">Loading orders...</div>;
+  if (error) return <div className="p-8 text-red-600">{error}</div>;
 
   return (
     <div className="p-8">
@@ -23,13 +42,12 @@ export const MyOrders: React.FC = () => {
         <p className="text-gray-500 mt-1">View your assigned service orders and their status</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Total Orders</p>
-              <p className="text-3xl text-gray-900 mt-2">{myOrders.length}</p>
+              <p className="text-3xl text-gray-900 mt-2">{rows.length}</p>
             </div>
             <div className="w-12 h-12 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
               <Package size={24} />
@@ -62,7 +80,6 @@ export const MyOrders: React.FC = () => {
         </div>
       </div>
 
-      {/* Active Orders */}
       {activeOrders.length > 0 && (
         <div className="mb-8">
           <h2 className="text-lg text-gray-900 mb-4">Active Orders</h2>
@@ -70,7 +87,7 @@ export const MyOrders: React.FC = () => {
             {activeOrders.map((order) => (
               <Link
                 key={order.id}
-                to={`/my-orders/${order.id}`}
+                to={`/service-orders/${order.id}`}
                 className="block p-6 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-start justify-between mb-3">
@@ -80,13 +97,15 @@ export const MyOrders: React.FC = () => {
                   </div>
                   <StatusBadge status={order.status} />
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-4 text-xs text-gray-600">
                   <div className="flex items-center gap-2">
                     <Calendar size={14} className="text-gray-400" />
                     <div>
                       <p className="text-gray-500">Duration</p>
-                      <p className="text-gray-900">{order.startDate} - {order.endDate}</p>
+                      <p className="text-gray-900">
+                        {order.startDate || "-"} - {order.endDate || "-"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -97,8 +116,8 @@ export const MyOrders: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <p className="text-gray-500">Role</p>
-                    <p className="text-gray-900">{order.role}</p>
+                    <p className="text-gray-500">Man Days</p>
+                    <p className="text-gray-900">{order.manDays}</p>
                   </div>
                 </div>
               </Link>
@@ -107,7 +126,6 @@ export const MyOrders: React.FC = () => {
         </div>
       )}
 
-      {/* Completed Orders */}
       {completedOrders.length > 0 && (
         <div>
           <h2 className="text-lg text-gray-900 mb-4">Completed Orders</h2>
@@ -115,7 +133,7 @@ export const MyOrders: React.FC = () => {
             {completedOrders.map((order) => (
               <Link
                 key={order.id}
-                to={`/my-orders/${order.id}`}
+                to={`/service-orders/${order.id}`}
                 className="block p-6 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-start justify-between mb-3">
@@ -125,13 +143,15 @@ export const MyOrders: React.FC = () => {
                   </div>
                   <StatusBadge status={order.status} />
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-4 text-xs text-gray-600">
                   <div className="flex items-center gap-2">
                     <Calendar size={14} className="text-gray-400" />
                     <div>
                       <p className="text-gray-500">Duration</p>
-                      <p className="text-gray-900">{order.startDate} - {order.endDate}</p>
+                      <p className="text-gray-900">
+                        {order.startDate || "-"} - {order.endDate || "-"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -142,8 +162,8 @@ export const MyOrders: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <p className="text-gray-500">Role</p>
-                    <p className="text-gray-900">{order.role}</p>
+                    <p className="text-gray-500">Man Days</p>
+                    <p className="text-gray-900">{order.manDays}</p>
                   </div>
                 </div>
               </Link>
@@ -152,7 +172,7 @@ export const MyOrders: React.FC = () => {
         </div>
       )}
 
-      {myOrders.length === 0 && (
+      {rows.length === 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
           <Package size={48} className="mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg text-gray-900 mb-2">No Service Orders</h3>

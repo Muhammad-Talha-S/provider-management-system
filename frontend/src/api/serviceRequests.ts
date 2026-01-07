@@ -1,17 +1,29 @@
+// src/api/serviceRequests.ts
 import type { ServiceRequest } from "../types";
 import { authFetch } from "./http";
 
-export async function getServiceRequests(accessToken: string, status: string = "all"): Promise<ServiceRequest[]> {
-  const qs = status && status !== "all" ? `?status=${encodeURIComponent(status)}` : "";
-  const res = await authFetch(`/api/service-requests/${qs}`, accessToken);
+/**
+ * List all service requests visible to provider
+ */
+export async function getServiceRequests(accessToken: string): Promise<ServiceRequest[]> {
+  const res = await authFetch("/api/service-requests/", accessToken, { method: "GET" });
+
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.detail || "Failed to load service requests");
+  if (!res.ok) {
+    throw new Error(data?.detail || `Failed to fetch service requests (${res.status})`);
+  }
   return data as ServiceRequest[];
 }
 
-export async function getServiceRequest(accessToken: string, id: string): Promise<ServiceRequest> {
-  const res = await authFetch(`/api/service-requests/${id}/`, accessToken);
+/**
+ * Fetch single service request by ID
+ */
+export async function getServiceRequestById(accessToken: string, id: string): Promise<ServiceRequest> {
+  const res = await authFetch(`/api/service-requests/${id}/`, accessToken, { method: "GET" });
+
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.detail || "Failed to load service request");
+  if (!res.ok) {
+    throw new Error(data?.detail || `Failed to fetch service request (${res.status})`);
+  }
   return data as ServiceRequest;
 }

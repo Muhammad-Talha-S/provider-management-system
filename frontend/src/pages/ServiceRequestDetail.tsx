@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
 import { ArrowLeft, FileText, Calendar, MapPin, Languages, CheckCircle, Star, Plus } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { getServiceRequest } from "../api/serviceRequests";
+import { getServiceRequestById } from "../api/serviceRequests";
 
 export const ServiceRequestDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,7 +30,7 @@ export const ServiceRequestDetail: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await getServiceRequest(tokens.access, id);
+        const data = await getServiceRequestById(tokens.access, id);
         setRequest(data);
       } catch (e: any) {
         setError(e?.message || "Failed to load service request");
