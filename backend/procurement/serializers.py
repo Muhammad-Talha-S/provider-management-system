@@ -1,12 +1,22 @@
 from rest_framework import serializers
-from .models import ServiceRequest, ServiceOffer, ServiceOrder
+from django.utils import timezone
+from django.db import transaction
+
+from .models import (
+    ServiceRequest,
+    ServiceOffer,
+    ServiceOrder,
+    ServiceOrderChangeRequest,
+)
 
 
+# -------------------------
+# Service Requests
+# -------------------------
 class ServiceRequestSerializer(serializers.ModelSerializer):
     linkedContractId = serializers.CharField(
         source="linked_contract_id", required=False, allow_null=True, allow_blank=True
     )
-
     experienceLevel = serializers.CharField(source="experience_level")
     startDate = serializers.DateField(source="start_date", allow_null=True, required=False)
     endDate = serializers.DateField(source="end_date", allow_null=True, required=False)
@@ -44,6 +54,9 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         ]
 
 
+# -------------------------
+# Service Offers
+# -------------------------
 class ServiceOfferSerializer(serializers.ModelSerializer):
     serviceRequestId = serializers.CharField(source="service_request_id")
     specialistId = serializers.CharField(source="specialist_id")
@@ -127,6 +140,11 @@ class ServiceOfferCreateSerializer(serializers.ModelSerializer):
             nice_to_have_match_percentage=nh,
             **validated_data,
         )
+
+        if offer.status == "Submitted" and offer.submitted_at is None:
+            offer.submitted_at = timezone.now()
+            offer.save(update_fields=["submitted_at"])
+
         return offer
 
 
@@ -141,31 +159,23 @@ class ServiceOfferStatusUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Only Draft offers can be submitted.")
         if new_status == "Withdrawn" and offer.status != "Submitted":
             raise serializers.ValidationError("Only Submitted offers can be withdrawn.")
+
         return attrs
 
 
-# Group 3 decision: Accept/Reject (API Key)
-class ServiceOfferDecisionSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(choices=["Accepted", "Rejected"])
-
-    def validate(self, attrs):
-        offer: ServiceOffer = self.context["offer"]
-        new_status = attrs["status"]
-        if offer.status != "Submitted":
-            raise serializers.ValidationError("Only Submitted offers can be accepted/rejected.")
-        return attrs
-
-
+# -------------------------
+# Service Orders
+# -------------------------
 class ServiceOrderSerializer(serializers.ModelSerializer):
     serviceOfferId = serializers.IntegerField(source="service_offer_id")
     serviceRequestId = serializers.CharField(source="service_request_id")
     providerId = serializers.CharField(source="provider_id")
     specialistId = serializers.CharField(source="specialist_id")
 
-    startDate = serializers.DateField(source="start_date", allow_null=True)
-    endDate = serializers.DateField(source="end_date", allow_null=True)
+    startDate = serializers.DateField(source="start_date", allow_null=True, required=False)
+    endDate = serializers.DateField(source="end_date", allow_null=True, required=False)
+
     manDays = serializers.IntegerField(source="man_days")
-    changeHistory = serializers.JSONField(source="change_history")
 
     class Meta:
         model = ServiceOrder
@@ -180,18 +190,272 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             "endDate",
             "location",
             "manDays",
+            "total_cost",
             "status",
-            "changeHistory",
             "created_at",
         ]
 
 
-class ServiceOrderSubstitutionSerializer(serializers.Serializer):
+# -------------------------
+# Group 3 Offer Decision (API-key)
+# -------------------------
+class Group3OfferDecisionSerializer(serializers.Serializer):
+    """
+    Group3 decides on submitted offers.
+    - Accept => offer Accepted + create ServiceOrder + close ServiceRequest
+    - Reject => offer Rejected
+    """
+    decision = serializers.ChoiceField(choices=["Accept", "Reject"])
+
+    def validate(self, attrs):
+        offer: ServiceOffer = self.context["offer"]
+
+        if offer.status not in ["Submitted", "Accepted", "Rejected"]:
+            raise serializers.ValidationError("Only Submitted offers can be decided by Group 3.")
+
+        return attrs
+
+    @transaction.atomic
+    def save(self, **kwargs):
+        offer: ServiceOffer = self.context["offer"]
+        decision = self.validated_data["decision"]
+
+        # If already decided, keep idempotent behavior
+        if offer.status in ["Accepted", "Rejected"]:
+            order = getattr(offer, "service_order", None)
+            return {"offer": offer, "order": order}
+
+        if decision == "Reject":
+            offer.status = "Rejected"
+            offer.save(update_fields=["status"])
+            return {"offer": offer, "order": None}
+
+        # Accept:
+        offer.status = "Accepted"
+        offer.save(update_fields=["status"])
+
+        sr = offer.service_request
+
+        # Create order if not already present (OneToOne)
+        order, created = ServiceOrder.objects.get_or_create(
+            service_offer=offer,
+            defaults={
+                "service_request": sr,
+                "provider": offer.provider,
+                "specialist": offer.specialist,
+                "title": sr.title,
+                "start_date": sr.start_date,
+                "end_date": sr.end_date,
+                "location": sr.performance_location or "Onshore",
+                "man_days": sr.total_man_days or 0,
+                "total_cost": offer.total_cost or 0,
+                "status": "Active",
+            },
+        )
+
+        # Close the Service Request after acceptance
+        if sr.status != "Closed":
+            sr.status = "Closed"
+            sr.save(update_fields=["status"])
+
+        return {"offer": offer, "order": order}
+
+
+# -------------------------
+# Change Requests
+# -------------------------
+class ServiceOrderChangeRequestSerializer(serializers.ModelSerializer):
+    serviceOrderId = serializers.IntegerField(source="service_order_id")
+    providerId = serializers.CharField(source="provider_id")
+
+    createdBySystem = serializers.BooleanField(source="created_by_system")
+    createdByUserId = serializers.CharField(source="created_by_user_id", allow_null=True, required=False)
+    decidedByUserId = serializers.CharField(source="decided_by_user_id", allow_null=True, required=False)
+
+    newEndDate = serializers.DateField(source="new_end_date", allow_null=True, required=False)
+    additionalManDays = serializers.IntegerField(source="additional_man_days", allow_null=True, required=False)
+    newTotalCost = serializers.DecimalField(source="new_total_cost", max_digits=12, decimal_places=2, allow_null=True, required=False)
+
+    oldSpecialistId = serializers.CharField(source="old_specialist_id", allow_null=True, required=False)
+    newSpecialistId = serializers.CharField(source="new_specialist_id", allow_null=True, required=False)
+
+    providerResponseNote = serializers.CharField(source="provider_response_note", required=False, allow_blank=True)
+
+    class Meta:
+        model = ServiceOrderChangeRequest
+        fields = [
+            "id",
+            "serviceOrderId",
+            "providerId",
+            "type",
+            "status",
+            "createdBySystem",
+            "createdByUserId",
+            "decidedByUserId",
+            "created_at",
+            "decided_at",
+            "reason",
+            "providerResponseNote",
+            "newEndDate",
+            "additionalManDays",
+            "newTotalCost",
+            "oldSpecialistId",
+            "newSpecialistId",
+        ]
+
+
+class ProviderCreateSubstitutionRequestSerializer(serializers.Serializer):
+    """
+    Provider-initiated substitution request (JWT).
+    """
+    serviceOrderId = serializers.IntegerField()
     newSpecialistId = serializers.CharField()
-    reason = serializers.CharField(allow_blank=True, required=False)
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        user = request.user
+
+        if user.role not in ["Provider Admin", "Supplier Representative"]:
+            raise serializers.ValidationError("Only Provider Admin or Supplier Representative can request substitution.")
+
+        order_id = attrs["serviceOrderId"]
+        try:
+            order = ServiceOrder.objects.select_related("provider", "specialist").get(id=order_id)
+        except ServiceOrder.DoesNotExist:
+            raise serializers.ValidationError("Service order not found.")
+
+        if order.provider_id != user.provider_id:
+            raise serializers.ValidationError("Not allowed.")
+
+        from accounts.models import User as AccountUser
+        try:
+            new_sp = AccountUser.objects.get(id=attrs["newSpecialistId"])
+        except AccountUser.DoesNotExist:
+            raise serializers.ValidationError("New specialist not found.")
+
+        if new_sp.role != "Specialist":
+            raise serializers.ValidationError("New specialist must be a Specialist.")
+        if new_sp.provider_id != user.provider_id:
+            raise serializers.ValidationError("New specialist must belong to your provider.")
+        if new_sp.id == order.specialist_id:
+            raise serializers.ValidationError("New specialist must be different from current specialist.")
+
+        attrs["_order"] = order
+        attrs["_new_sp"] = new_sp
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        order = validated_data["_order"]
+        new_sp = validated_data["_new_sp"]
+
+        cr = ServiceOrderChangeRequest.objects.create(
+            service_order=order,
+            provider_id=order.provider_id,
+            type="Substitution",
+            status="Requested",
+            created_by_system=False,
+            created_by_user=request.user,
+            reason=validated_data.get("reason", ""),
+            old_specialist_id=order.specialist_id,
+            new_specialist_id=new_sp.id,
+        )
+        return cr
 
 
-class ServiceOrderExtensionSerializer(serializers.Serializer):
-    endDate = serializers.DateField()
-    manDays = serializers.IntegerField(min_value=0)
-    reason = serializers.CharField(allow_blank=True, required=False)
+class Group3ExtensionCreateSerializer(serializers.Serializer):
+    """
+    Group3 creates extension request (API-key).
+    """
+    newEndDate = serializers.DateField()
+    additionalManDays = serializers.IntegerField(min_value=1)
+    newTotalCost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        order: ServiceOrder = self.context["order"]
+        if order.status != "Active":
+            raise serializers.ValidationError("Only Active orders can be extended.")
+        return attrs
+
+    def create(self, validated_data):
+        order: ServiceOrder = self.context["order"]
+        cr = ServiceOrderChangeRequest.objects.create(
+            service_order=order,
+            provider_id=order.provider_id,
+            type="Extension",
+            status="Requested",
+            created_by_system=True,
+            created_by_user=None,
+            reason=validated_data.get("reason", ""),
+            new_end_date=validated_data["newEndDate"],
+            additional_man_days=validated_data["additionalManDays"],
+            new_total_cost=validated_data.get("newTotalCost", None),
+        )
+        return cr
+
+
+class Group3SubstitutionCreateSerializer(serializers.Serializer):
+    """
+    Group3 creates substitution request (API-key).
+    Provider will approve/decline.
+    """
+    newSpecialistId = serializers.CharField()
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        order: ServiceOrder = self.context["order"]
+
+        from accounts.models import User as AccountUser
+        try:
+            new_sp = AccountUser.objects.get(id=attrs["newSpecialistId"])
+        except AccountUser.DoesNotExist:
+            raise serializers.ValidationError("New specialist not found.")
+
+        if new_sp.role != "Specialist":
+            raise serializers.ValidationError("New specialist must be a Specialist.")
+        if new_sp.provider_id != order.provider_id:
+            raise serializers.ValidationError("New specialist must belong to the same provider as the order.")
+        if new_sp.id == order.specialist_id:
+            raise serializers.ValidationError("New specialist must be different from current specialist.")
+
+        attrs["_new_sp"] = new_sp
+        return attrs
+
+    def create(self, validated_data):
+        order: ServiceOrder = self.context["order"]
+        new_sp = validated_data["_new_sp"]
+
+        cr = ServiceOrderChangeRequest.objects.create(
+            service_order=order,
+            provider_id=order.provider_id,
+            type="Substitution",
+            status="Requested",
+            created_by_system=True,
+            created_by_user=None,
+            reason=validated_data.get("reason", ""),
+            old_specialist_id=order.specialist_id,
+            new_specialist_id=new_sp.id,
+        )
+        return cr
+
+
+class ProviderDecisionSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=["Approve", "Decline"])
+    providerResponseNote = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        cr: ServiceOrderChangeRequest = self.context["change_request"]
+
+        if cr.status != "Requested":
+            raise serializers.ValidationError("Only Requested change requests can be decided.")
+
+        user = self.context["request"].user
+        if user.role not in ["Provider Admin", "Supplier Representative"]:
+            raise serializers.ValidationError("Not allowed.")
+
+        if cr.provider_id != user.provider_id:
+            raise serializers.ValidationError("Not allowed.")
+
+        return attrs

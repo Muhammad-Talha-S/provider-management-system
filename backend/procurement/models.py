@@ -1,6 +1,5 @@
 from django.db import models
 from django.conf import settings
-from django.utils import timezone
 
 
 class ServiceRequest(models.Model):
@@ -110,20 +109,65 @@ class ServiceOrder(models.Model):
     location = models.CharField(max_length=50, blank=True, default="Onshore")
     man_days = models.PositiveIntegerField(default=0)
 
-    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="Active")
-    change_history = models.JSONField(default=list, blank=True)
+    # optional but useful to display on UI
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def add_history(self, change_type: str, status: str, initiated_by: str, payload: dict | None = None):
-        history = self.change_history or []
-        history.append(
-            {
-                "type": change_type,
-                "status": status,
-                "initiatedBy": initiated_by,
-                "date": timezone.now().isoformat(),
-                "payload": payload or {},
-            }
-        )
-        self.change_history = history
+    def __str__(self):
+        return f"Order {self.id} ({self.provider_id})"
+
+
+class ServiceOrderChangeRequest(models.Model):
+    TYPE_CHOICES = [("Extension", "Extension"), ("Substitution", "Substitution")]
+    STATUS_CHOICES = [("Requested", "Requested"), ("Approved", "Approved"), ("Declined", "Declined")]
+
+    id = models.AutoField(primary_key=True)
+    service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="change_requests")
+    provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="service_order_change_requests")
+
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Requested")
+
+    # actor fields
+    created_by_system = models.BooleanField(default=False)
+    created_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_order_change_requests_created"
+    )
+    decided_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_order_change_requests_decided"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    reason = models.TextField(blank=True, default="")
+    provider_response_note = models.TextField(blank=True, default="")
+
+    # extension payload
+    new_end_date = models.DateField(null=True, blank=True)
+    additional_man_days = models.PositiveIntegerField(null=True, blank=True)
+    new_total_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # substitution payload
+    old_specialist = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_order_change_requests_old_specialist",
+    )
+    new_specialist = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_order_change_requests_new_specialist",
+    )
+
+    def __str__(self):
+        return f"ChangeRequest {self.id} ({self.type}) for Order {self.service_order_id}"
