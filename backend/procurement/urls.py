@@ -5,24 +5,34 @@ from .views import (
     ServiceOfferListCreateView,
     ServiceOfferDetailView,
     ServiceOfferStatusUpdateView,
-    ServiceOfferDecisionView,
     ServiceOrderListView,
     ServiceOrderDetailView,
-    ServiceOrderSubstitutionView,
-    ServiceOrderExtensionView,
+    MyOrdersView,
+    ServiceOrderChangeRequestListCreateView,
+    ServiceOrderChangeRequestDecisionView,
+    Group3CreateExtensionView,
+    Group3CreateSubstitutionView,
+    Group3OfferDecisionView,
 )
 
 urlpatterns = [
+    # provider portal
     path("service-requests/", ServiceRequestListView.as_view()),
     path("service-requests/<str:id>/", ServiceRequestDetailView.as_view(), name="service-requests-detail"),
 
     path("service-offers/", ServiceOfferListCreateView.as_view(), name="service-offers-list-create"),
     path("service-offers/<int:id>/", ServiceOfferDetailView.as_view(), name="service-offers-detail"),
     path("service-offers/<int:id>/status/", ServiceOfferStatusUpdateView.as_view(), name="service-offers-status"),
-    path("service-offers/<int:id>/decision/", ServiceOfferDecisionView.as_view(), name="service-offers-decision"),
 
     path("service-orders/", ServiceOrderListView.as_view(), name="service-orders-list"),
     path("service-orders/<int:id>/", ServiceOrderDetailView.as_view(), name="service-orders-detail"),
-    path("service-orders/<int:id>/substitution/", ServiceOrderSubstitutionView.as_view(), name="service-orders-substitution"),
-    path("service-orders/<int:id>/extension/", ServiceOrderExtensionView.as_view(), name="service-orders-extension"),
+    path("my-orders/", MyOrdersView.as_view(), name="my-orders"),
+
+    path("service-order-change-requests/", ServiceOrderChangeRequestListCreateView.as_view(), name="order-change-requests"),
+    path("service-order-change-requests/<int:id>/decision/", ServiceOrderChangeRequestDecisionView.as_view(), name="order-change-requests-decision"),
+
+    # group3 api-key endpoints
+    path("group3/service-orders/<int:id>/extensions/", Group3CreateExtensionView.as_view(), name="group3-create-extension"),
+    path("group3/service-orders/<int:id>/substitutions/", Group3CreateSubstitutionView.as_view(), name="group3-create-substitution"),
+    path("group3/service-offers/<int:id>/decision/", Group3OfferDecisionView.as_view(), name="group3-offer-decision"),
 ]
