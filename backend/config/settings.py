@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "providers",
     "accounts",
     "procurement",
+    "activitylog",
 ]
 
 MIDDLEWARE = [

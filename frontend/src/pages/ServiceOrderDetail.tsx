@@ -1,94 +1,92 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { StatusBadge } from "../components/StatusBadge";
 import { ArrowLeft, Calendar, MapPin, Clock, Building } from "lucide-react";
+import { StatusBadge } from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
 import { hasAnyRole } from "../utils/roleHelpers";
-import { getServiceOrderById, requestSubstitution } from "../api/serviceOrders";
+
+import { getServiceOrderById } from "../api/serviceOrders";
 import type { ServiceOrder } from "../api/serviceOrders";
+
+import { listChangeRequests, decideChangeRequest, requestSubstitution } from "../api/serviceOrderChangeRequests";
+import type { ServiceOrderChangeRequest } from "../api/serviceOrderChangeRequests";
+
 import { getSpecialists } from "../api/specialists";
+import type { Specialist } from "../types";
 
 export const ServiceOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const orderId = Number(id);
   const navigate = useNavigate();
-  const { tokens, currentUser, currentProvider } = useApp();
+  const { currentUser, tokens, currentProvider } = useApp();
 
   const [order, setOrder] = useState<ServiceOrder | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [changeRequests, setChangeRequests] = useState<ServiceOrderChangeRequest[]>([]);
+  const [specialists, setSpecialists] = useState<Specialist[]>([]);
 
-  const [specialists, setSpecialists] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
   const [showSubstitutionForm, setShowSubstitutionForm] = useState(false);
-  const [replacementId, setReplacementId] = useState("");
+  const [newSpecialistId, setNewSpecialistId] = useState("");
   const [reason, setReason] = useState("");
 
-  const canRequestSubstitution = hasAnyRole(currentUser, ["Supplier Representative", "Provider Admin"]);
+  const access = tokens?.access || "";
 
-  useEffect(() => {
-    if (!tokens?.access || !orderId) return;
+  const canProviderAct = hasAnyRole(currentUser, ["Supplier Representative", "Provider Admin"]);
 
-    const run = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const o = await getServiceOrderById(tokens.access, orderId);
-        setOrder(o);
-
-        // Specialists list only needed if user can request substitution
-        if (canRequestSubstitution) {
-          const specs = await getSpecialists(tokens.access);
-          const mine = specs.filter((s: any) => s.providerId === currentProvider?.id);
-          setSpecialists(mine);
-        }
-      } catch (e: any) {
-        setError(e?.message || "Failed to load service order");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    run();
-  }, [tokens?.access, orderId, canRequestSubstitution, currentProvider?.id]);
-
-  const replacementOptions = useMemo(() => {
-    if (!order) return [];
-    return specialists
-      .filter((s: any) => s.id !== order.specialistId)
-      .filter((s: any) => (s.availability || "") === "Available");
-  }, [specialists, order]);
-
-  const currentSpecialist = useMemo(() => {
-    if (!order) return null;
-    return specialists.find((s: any) => s.id === order.specialistId) || null;
-  }, [specialists, order]);
-
-  const handleRequestSubstitution = async () => {
-    if (!tokens?.access || !order) return;
-    if (!replacementId) return alert("Select replacement specialist");
-
+  const refreshAll = async () => {
+    if (!access || !id) return;
+    setLoading(true);
+    setErr(null);
     try {
-      const updated = await requestSubstitution(tokens.access, order.id, {
-        newSpecialistId: replacementId,
-        reason,
-      });
-      setOrder(updated);
-      setShowSubstitutionForm(false);
-      setReplacementId("");
-      setReason("");
-      alert("Substitution applied.");
+      const o = await getServiceOrderById(access, Number(id));
+      setOrder(o);
+
+      const cr = await listChangeRequests(access);
+      // filter for this order only
+      setChangeRequests(cr.filter((x) => x.serviceOrderId === Number(id)));
+
+      // only provider roles need specialists list for substitution UI
+      if (canProviderAct) {
+        const sp = await getSpecialists(access);
+        const filtered = sp.filter(
+          (s: any) =>
+            s.providerId === currentProvider?.id &&
+            s.id !== o.specialistId &&
+            (s.availability || "") !== "Fully Booked"
+        );
+        setSpecialists(filtered);
+      }
     } catch (e: any) {
-      alert(e?.message || "Failed to request substitution");
+      setErr(e?.message || "Failed to load order");
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading) return <div className="p-8 text-gray-600">Loading...</div>;
+  useEffect(() => {
+    refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access, id]);
 
-  if (error || !order) {
+  const pendingRequests = useMemo(
+    () => changeRequests.filter((r) => r.status === "Requested"),
+    [changeRequests]
+  );
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <p className="text-gray-600">Loading order...</p>
+      </div>
+    );
+  }
+
+  if (err || !order) {
     return (
       <div className="p-8">
         <div className="text-center">
-          <p className="text-gray-500">{error || "Service Order not found"}</p>
+          <p className="text-gray-500">{err || "Service Order not found"}</p>
           <button onClick={() => navigate("/service-orders")} className="mt-4 text-blue-600 hover:text-blue-700">
             Back to Service Orders
           </button>
@@ -97,8 +95,37 @@ export const ServiceOrderDetail: React.FC = () => {
     );
   }
 
+  const handleDecision = async (crId: number, decision: "Approve" | "Decline") => {
+    try {
+      if (!access) throw new Error("Not authenticated");
+      await decideChangeRequest(access, crId, { decision });
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || "Failed to update request");
+    }
+  };
+
+  const handleSubstitutionRequest = async () => {
+    try {
+      if (!access) throw new Error("Not authenticated");
+      if (!newSpecialistId) return alert("Select a replacement specialist");
+      await requestSubstitution(access, {
+        serviceOrderId: order.id,
+        newSpecialistId,
+        reason,
+      });
+      setShowSubstitutionForm(false);
+      setNewSpecialistId("");
+      setReason("");
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || "Failed to request substitution");
+    }
+  };
+
   return (
     <div className="p-8">
+      {/* Header */}
       <div className="mb-6">
         <button
           onClick={() => navigate("/service-orders")}
@@ -111,14 +138,16 @@ export const ServiceOrderDetail: React.FC = () => {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl text-gray-900">Service Order</h1>
-            <p className="text-gray-500 mt-1">{order.id}</p>
+            <p className="text-gray-500 mt-1">#{order.id}</p>
           </div>
           <StatusBadge status={order.status} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Order Information */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg text-gray-900 mb-4">Order Information</h2>
 
@@ -132,23 +161,39 @@ export const ServiceOrderDetail: React.FC = () => {
                   {order.serviceRequestId} →
                 </Link>
               </div>
+
+              <div>
+                <label className="text-xs text-gray-500">Specialist</label>
+                <p className="text-sm text-gray-900 mt-1">{order.specialistId}</p>
+              </div>
+
               <div>
                 <label className="text-xs text-gray-500">Title</label>
                 <p className="text-sm text-gray-900 mt-1">{order.title}</p>
               </div>
+
               <div>
                 <label className="text-xs text-gray-500">Man-Days</label>
                 <p className="text-sm text-gray-900 mt-1">{order.manDays} days</p>
               </div>
+
               <div>
-                <label className="text-xs text-gray-500">Location</label>
-                <p className="text-sm text-gray-900 mt-1">{order.location}</p>
+                <label className="text-xs text-gray-500">Total Cost</label>
+                <p className="text-sm text-gray-900 mt-1">€{Number(order.total_cost || 0).toLocaleString()}</p>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500">Status</label>
+                <div className="mt-1">
+                  <StatusBadge status={order.status} />
+                </div>
               </div>
             </div>
           </div>
 
+          {/* Timeline */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Timeline</h2>
+            <h2 className="text-lg text-gray-900 mb-4">Timeline & Location</h2>
 
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -175,94 +220,80 @@ export const ServiceOrderDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Supplier Info - minimal for now */}
+          {/* Change Requests */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Supplier Information</h2>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Building size={18} className="text-gray-400" />
-                <div>
-                  <label className="text-xs text-gray-500">Supplier Company</label>
-                  <p className="text-sm text-gray-900">{currentProvider?.name || "Provider"}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            <h2 className="text-lg text-gray-900 mb-4">Change Requests</h2>
 
-          {/* Assigned Specialist */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Assigned Specialist</h2>
-            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
-                {(currentSpecialist?.name || order.specialistId).charAt(0)}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-900">{currentSpecialist?.name || order.specialistId}</p>
-                <p className="text-xs text-gray-500">{order.specialistId}</p>
-              </div>
-              <Link to={`/specialists/${order.specialistId}`} className="text-sm text-blue-600 hover:text-blue-700">
-                View Profile
-              </Link>
-            </div>
-          </div>
-
-          {/* Change History */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Change History</h2>
-
-            {order.changeHistory && order.changeHistory.length > 0 ? (
+            {changeRequests.length === 0 ? (
+              <p className="text-sm text-gray-500">No change requests yet.</p>
+            ) : (
               <div className="space-y-3">
-                {order.changeHistory.map((change, idx) => (
-                  <div key={idx} className="p-4 border border-gray-200 rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
+                {changeRequests.map((cr) => (
+                  <div key={cr.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                            {change.type}
-                          </span>
-                          <StatusBadge status={change.status} />
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">{cr.type}</span>
+                          <StatusBadge status={cr.status} />
+                          {cr.createdBySystem && (
+                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Group 3</span>
+                          )}
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">Initiated by: {change.initiatedBy}</p>
+
+                        {cr.reason && <p className="text-sm text-gray-700 mt-2">{cr.reason}</p>}
+
+                        {cr.type === "Extension" && (
+                          <div className="mt-2 text-xs text-gray-600">
+                            <div>New End Date: <span className="text-gray-900">{cr.newEndDate || "-"}</span></div>
+                            <div>Additional Man Days: <span className="text-gray-900">{cr.additionalManDays ?? "-"}</span></div>
+                            {cr.newTotalCost && (
+                              <div>New Total Cost: <span className="text-gray-900">€{Number(cr.newTotalCost).toLocaleString()}</span></div>
+                            )}
+                          </div>
+                        )}
+
+                        {cr.type === "Substitution" && (
+                          <div className="mt-2 text-xs text-gray-600">
+                            <div>Old Specialist: <span className="text-gray-900">{cr.oldSpecialistId || "-"}</span></div>
+                            <div>New Specialist: <span className="text-gray-900">{cr.newSpecialistId || "-"}</span></div>
+                          </div>
+                        )}
                       </div>
+
                       <div className="flex items-center gap-1 text-xs text-gray-500">
                         <Clock size={12} />
-                        {change.date}
+                        {new Date(cr.created_at).toLocaleString()}
                       </div>
                     </div>
+
+                    {/* Actions only for provider roles and only when Requested */}
+                    {canProviderAct && cr.status === "Requested" && (
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={() => handleDecision(cr.id, "Approve")}
+                          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleDecision(cr.id, "Decline")}
+                          className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="text-sm text-gray-500">No change history available</p>
             )}
           </div>
         </div>
 
         {/* Right Column */}
         <div className="space-y-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-sm text-gray-900 mb-4">Order Summary</h2>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-500">Order ID</label>
-                <p className="text-sm text-gray-900 mt-1">{order.id}</p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Status</label>
-                <div className="mt-1">
-                  <StatusBadge status={order.status} />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Total Man-Days</label>
-                <p className="text-sm text-gray-900 mt-1">{order.manDays}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Substitution */}
-          {order.status === "Active" && canRequestSubstitution && (
+          {/* Substitution request (Provider roles only) */}
+          {order.status === "Active" && canProviderAct && (
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <h2 className="text-sm text-gray-900 mb-4">Actions</h2>
 
@@ -278,46 +309,39 @@ export const ServiceOrderDetail: React.FC = () => {
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Replacement Specialist</label>
                     <select
+                      value={newSpecialistId}
+                      onChange={(e) => setNewSpecialistId(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                      value={replacementId}
-                      onChange={(e) => setReplacementId(e.target.value)}
                     >
                       <option value="">Select specialist...</option>
-                      {replacementOptions.map((s: any) => (
+                      {specialists.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.id})
+                          {s.name} ({s.availability})
                         </option>
                       ))}
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Only “Available” specialists from the same provider are shown.
-                    </p>
                   </div>
 
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Reason</label>
                     <textarea
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                      rows={3}
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      rows={3}
                       placeholder="Explain the reason for substitution..."
                     />
                   </div>
 
                   <div className="flex gap-2">
                     <button
-                      onClick={handleRequestSubstitution}
+                      onClick={handleSubstitutionRequest}
                       className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
                     >
                       Submit
                     </button>
                     <button
-                      onClick={() => {
-                        setShowSubstitutionForm(false);
-                        setReplacementId("");
-                        setReason("");
-                      }}
+                      onClick={() => setShowSubstitutionForm(false)}
                       className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
                     >
                       Cancel
@@ -332,8 +356,8 @@ export const ServiceOrderDetail: React.FC = () => {
           {order.status === "Active" && (
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
               <p className="text-sm text-blue-700">
-                <strong>Note:</strong> Extensions are initiated by the Project Manager externally (Group 3).
-                You will receive a notification if an extension is requested.
+                <strong>Note:</strong> Extensions are initiated by the Project Manager (Group 3) externally via API.
+                When requested, you can approve or decline here.
               </p>
             </div>
           )}

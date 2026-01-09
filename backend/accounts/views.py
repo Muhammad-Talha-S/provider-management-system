@@ -1,19 +1,18 @@
+from datetime import date
 from django.contrib.auth import authenticate
 from rest_framework import serializers, generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.exceptions import PermissionDenied
 
 from .models import User
 from .serializers import UserSerializer, UserRoleUpdateSerializer, UserCreateSerializer, UserUpdateSerializer
 from providers.serializers import ProviderSerializer
 from .permissions import IsProviderAdmin, IsProviderMemberReadOnly, IsSameProviderOrSelf
+from activitylog.utils import log_activity
 
-from datetime import date
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -64,9 +63,20 @@ class UserRoleUpdateView(generics.UpdateAPIView):
         if target.provider_id != request.user.provider_id:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Optional: prevent provider admin from demoting themselves (nice safety)
+        # Optional: prevent provider admin from demoting themselves
         if target.id == request.user.id and request.data.get("role") != "Provider Admin":
             return Response({"detail": "You cannot change your own role."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        log_activity(
+            provider_id=request.user.provider_id,
+            actor_type="USER",
+            actor_user=request.user,
+            event_type="ACC_USER_ROLE_CHANGED",
+            entity_type="User",
+            entity_id=target.id,
+            message=f"Changed role for {target.name} to {request.data.get('role')}",
+            metadata={"newRole": request.data.get("role")},
+        )
 
         return super().patch(request, *args, **kwargs)
 
@@ -113,6 +123,17 @@ class UserListCreateView(generics.ListCreateAPIView):
         # attach provider and default created_at if missing
         created_at = serializer.validated_data.get("created_at") or date.today()
         serializer.save(provider=self.request.user.provider, created_at=created_at)
+        created_user = serializer.instance
+        log_activity(
+            provider_id=self.request.user.provider_id,
+            actor_type="USER",
+            actor_user=self.request.user,
+            event_type="ACC_USER_CREATED",
+            entity_type="User",
+            entity_id=created_user.id,
+            message=f"Created user {created_user.name} ({created_user.role})",
+            metadata={"role": created_user.role, "email": created_user.email},
+        )
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -139,6 +160,17 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         if target.id != self.request.user.id:
             raise PermissionDenied("Not allowed.")
         serializer.save()
+        target = self.get_object()
+
+        log_activity(
+            provider_id=self.request.user.provider_id,
+            actor_type="USER",
+            actor_user=self.request.user,
+            event_type="ACC_USER_UPDATED",
+            entity_type="User",
+            entity_id=target.id,
+            message=f"Updated user {target.name}",
+        )
 
     def perform_destroy(self, instance):
         # Only Provider Admin can delete, within provider
@@ -146,6 +178,17 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise PermissionDenied("Only Provider Admin can delete users.")
         if instance.provider_id != self.request.user.provider_id:
             raise PermissionDenied("Not allowed.")
+
+        log_activity(
+            provider_id=self.request.user.provider_id,
+            actor_type="USER",
+            actor_user=self.request.user,
+            event_type="ACC_USER_DELETED",
+            entity_type="User",
+            entity_id=instance.id,
+            message=f"Deleted user {instance.name}",
+        )
+
         instance.delete()
 
 
