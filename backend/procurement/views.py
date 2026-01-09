@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from .auth import Group3ApiKeyAuthentication
 from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderChangeRequest
+from activitylog.utils import log_activity
 from .serializers import (
     ServiceRequestSerializer,
     ServiceOfferSerializer,
@@ -45,7 +46,9 @@ class ServiceOfferListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return ServiceOffer.objects.filter(provider=self.request.user.provider).order_by("-created_at")
+        return ServiceOffer.objects.filter(
+            provider=self.request.user.provider
+        ).order_by("-created_at")
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -54,14 +57,45 @@ class ServiceOfferListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         user = self.request.user
+
         if user.role not in ["Provider Admin", "Supplier Representative"]:
-            raise PermissionDenied("Only Provider Admin or Supplier Representative can create offers.")
+            raise PermissionDenied(
+                "Only Provider Admin or Supplier Representative can create offers."
+            )
 
         offer = serializer.save()
 
-        if offer.status == "Submitted" and offer.submitted_at is None:
-            offer.submitted_at = timezone.now()
-            offer.save(update_fields=["submitted_at"])
+        # ---- Log: Offer Created ----
+        log_activity(
+            provider_id=offer.provider_id,
+            actor_type="USER",
+            actor_user=user,
+            event_type="PROC_OFFER_CREATED",
+            entity_type="ServiceOffer",
+            entity_id=offer.id,
+            message=f"Created service offer for request {offer.service_request_id}",
+            metadata={
+                "serviceRequestId": offer.service_request_id,
+                "status": offer.status,
+            },
+        )
+
+        # ---- Handle Submitted status ----
+        if offer.status == "Submitted":
+            if offer.submitted_at is None:
+                offer.submitted_at = timezone.now()
+                offer.save(update_fields=["submitted_at"])
+
+            # ---- Log: Offer Submitted ----
+            log_activity(
+                provider_id=offer.provider_id,
+                actor_type="USER",
+                actor_user=user,
+                event_type="PROC_OFFER_SUBMITTED",
+                entity_type="ServiceOffer",
+                entity_id=offer.id,
+                message=f"Submitted offer for request {offer.service_request_id}",
+            )
 
 
 class ServiceOfferDetailView(generics.RetrieveAPIView):
@@ -98,6 +132,17 @@ class ServiceOfferStatusUpdateView(APIView):
             offer.submitted_at = timezone.now()
 
         offer.save(update_fields=["status", "submitted_at"])
+        event = "PROC_OFFER_SUBMITTED" if new_status == "Submitted" else "PROC_OFFER_WITHDRAWN"
+        log_activity(
+            provider_id=offer.provider_id,
+            actor_type="USER",
+            actor_user=request.user,
+            event_type=event,
+            entity_type="ServiceOffer",
+            entity_id=offer.id,
+            message=f"Offer status changed to {new_status}",
+            metadata={"status": new_status},
+        )
         return Response(ServiceOfferSerializer(offer).data)
 
 
@@ -174,6 +219,16 @@ class ServiceOrderChangeRequestListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         cr = serializer.save()
+        log_activity(
+            provider_id=cr.provider_id,
+            actor_type="USER",
+            actor_user=request.user,
+            event_type="PROC_CHANGE_REQUEST_CREATED",
+            entity_type="ServiceOrderChangeRequest",
+            entity_id=cr.id,
+            message=f"Requested substitution on order {cr.service_order_id}",
+            metadata={"type": cr.type, "orderId": cr.service_order_id},
+        )
         return Response(ServiceOrderChangeRequestSerializer(cr).data, status=201)
 
 
@@ -223,6 +278,16 @@ class ServiceOrderChangeRequestDecisionView(APIView):
             order.save(update_fields=["specialist_id"])
 
         cr.save(update_fields=["status", "provider_response_note", "decided_by_user", "decided_at"])
+        log_activity(
+            provider_id=cr.provider_id,
+            actor_type="USER",
+            actor_user=request.user,
+            event_type="PROC_CHANGE_REQUEST_DECIDED",
+            entity_type="ServiceOrderChangeRequest",
+            entity_id=cr.id,
+            message=f"{decision} change request on order {cr.service_order_id}",
+            metadata={"decision": decision, "type": cr.type, "orderId": cr.service_order_id},
+        )
         return Response(ServiceOrderChangeRequestSerializer(cr).data)
 
 
@@ -242,6 +307,16 @@ class Group3CreateExtensionView(APIView):
         ser = Group3ExtensionCreateSerializer(data=request.data, context={"order": order})
         ser.is_valid(raise_exception=True)
         cr = ser.save()
+        log_activity(
+            provider_id=cr.provider_id,
+            actor_type="GROUP3_SYSTEM",
+            actor_user=None,
+            event_type="PROC_GROUP3_CHANGE_REQUEST_CREATED",
+            entity_type="ServiceOrderChangeRequest",
+            entity_id=cr.id,
+            message=f"Group3 requested Extension on order {cr.service_order_id}",
+            metadata={"type": "Extension", "orderId": cr.service_order_id},
+        )
         return Response(ServiceOrderChangeRequestSerializer(cr).data, status=201)
 
 
@@ -284,8 +359,42 @@ class Group3OfferDecisionView(APIView):
         offer = result["offer"]
         order = result.get("order")
 
+        # ---- Log: Group3 Offer Decision ----
+        decision = request.data.get("decision")
+        log_activity(
+            provider_id=offer.provider_id,
+            actor_type="GROUP3_SYSTEM",
+            actor_user=None,
+            event_type="PROC_GROUP3_OFFER_DECIDED",
+            entity_type="ServiceOffer",
+            entity_id=offer.id,
+            message=f"Group3 decision: {decision} for offer on request {offer.service_request_id}",
+            metadata={
+                "decision": decision,
+                "serviceRequestId": offer.service_request_id,
+                "orderId": order.id if order else None,
+            },
+        )
+
+        # ---- Log: Service Order Created (if accepted) ----
+        if order:
+            log_activity(
+                provider_id=order.provider_id,
+                actor_type="GROUP3_SYSTEM",
+                actor_user=None,
+                event_type="PROC_SERVICE_ORDER_CREATED",
+                entity_type="ServiceOrder",
+                entity_id=order.id,
+                message=f"Service Order created from accepted offer {offer.id}",
+                metadata={
+                    "offerId": offer.id,
+                    "serviceRequestId": order.service_request_id,
+                },
+            )
+
         payload = {
             "offer": ServiceOfferSerializer(offer).data,
             "order": ServiceOrderSerializer(order).data if order else None,
         }
         return Response(payload, status=200)
+
