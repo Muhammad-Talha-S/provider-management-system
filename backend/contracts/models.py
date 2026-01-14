@@ -1,8 +1,5 @@
 from django.db import models
 from django.conf import settings
-
-
-from django.db import models
 from providers.models import Provider
 
 
@@ -38,7 +35,10 @@ class Contract(models.Model):
     functional_weight = models.PositiveIntegerField(null=True, blank=True)
     commercial_weight = models.PositiveIntegerField(null=True, blank=True)
 
-    # Flexible contract config (you already modelled it in FE as AllowedRequestConfigs)
+    # {
+    #   "Single": {"offerDeadlineDays": 5, "cycles": 1},
+    #   "Team": {"offerDeadlineDays": 7, "cycles": 2}
+    # }
     allowed_request_configs = models.JSONField(null=True, blank=True)
 
     awarded_provider = models.ForeignKey(
@@ -49,13 +49,18 @@ class Contract(models.Model):
         related_name="awarded_contracts",
     )
 
-    # Request type configs enforced later (Milestone 5), but stored now:
-    # {
-    #   "Single": {"offerDeadlineDays": 5, "cycles": 1},
-    #   "Team": {"offerDeadlineDays": 7, "cycles": 2}
-    # }
-
     created_at = models.DateTimeField(auto_now_add=True)
+
+    offer_deadline = models.DateTimeField(null=True, blank=True)
+
+    accepted_request_types = models.JSONField(null=True, blank=True, default=list)
+    allowed_domains = models.JSONField(null=True, blank=True, default=list)
+    allowed_roles = models.JSONField(null=True, blank=True, default=list)
+    experience_levels = models.JSONField(null=True, blank=True, default=list)
+
+    offer_cycles_and_deadlines = models.JSONField(null=True, blank=True, default=list)
+    pricing_limits = models.JSONField(null=True, blank=True, default=list)
+    version_history = models.JSONField(null=True, blank=True, default=list)
 
     def __str__(self):
         return f"{self.id} - {self.title}"
@@ -100,6 +105,7 @@ class ContractOffer(models.Model):
         related_name="contract_offers_created",
     )
 
+    # you always create as Submitted currently (fine)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Submitted")
 
     proposed_daily_rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

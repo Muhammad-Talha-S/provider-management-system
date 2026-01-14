@@ -6,6 +6,28 @@ export type ContractKind = "Service" | "License" | "Hardware";
 
 export type RequestType = "Single" | "Multi" | "Team" | "Work Contract";
 
+export type PricingLimit = {
+  role: string;
+  experienceLevel: string;
+  technologyLevel?: string | null;
+  maxRate: number;
+};
+
+export type OfferCycle = {
+  requestType: string;
+  cycle: string;
+  deadline: string;
+};
+
+export type VersionHistoryItem = {
+  version: number;
+  date: string;
+  status: "Signed" | "Proposed" | "Rejected";
+  changes: string;
+  documentLink?: string | null;
+};
+
+
 export type AllowedRequestConfigs = Partial<
   Record<RequestType, { offerDeadlineDays: number; cycles: 1 | 2 }>
 >;
@@ -32,6 +54,15 @@ export type Contract = {
 
   // Award info (Option A)
   awardedProviderId?: string | null;
+
+  acceptedRequestTypes?: string[];
+  allowedDomains?: string[];
+  allowedRoles?: string[];
+  experienceLevels?: string[];
+
+  offerCyclesAndDeadlines?: OfferCycle[];
+  pricingLimits?: PricingLimit[];
+  versionHistory?: VersionHistoryItem[];
 };
 
 export type ContractOfferStatus =

@@ -89,6 +89,8 @@ export interface ServiceRequest {
   id: string;
   title: string;
   type: "Single" | "Multi" | "Team" | "Work Contract";
+  offerDeadlineAt?: string | null; // ISO string
+  cycles?: number | null;
   linkedContractId: string;
   role: string;
   technology: string;

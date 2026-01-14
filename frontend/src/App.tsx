@@ -17,7 +17,6 @@ import { UserProfile } from "./pages/UserProfile";
 import { MyOrders } from "./pages/MyOrders";
 import { ContractDetail } from "./pages/ContractDetail";
 import { ProviderPage } from "./pages/ProviderPage";
-import { CreateServiceOrder } from "./pages/CreateServiceOrder";
 import { CreateServiceOffer } from "./pages/CreateServiceOffer";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -51,10 +50,10 @@ const AppContent: React.FC = () => {
           <Route path="/service-requests/:id" element={<ProtectedRoute><ServiceRequestDetail /></ProtectedRoute>} />
 
           <Route path="/service-offers" element={<ProtectedRoute><ServiceOffersPage /></ProtectedRoute>} />
+          <Route path="/service-offers/create" element={<ProtectedRoute><CreateServiceOffer /></ProtectedRoute>} />
           <Route path="/service-offers/:id" element={<ProtectedRoute><ServiceOfferDetail /></ProtectedRoute>} />
 
           <Route path="/service-orders" element={<ProtectedRoute><ServiceOrdersPage /></ProtectedRoute>} />
-          <Route path="/service-orders/create" element={<ProtectedRoute><CreateServiceOrder /></ProtectedRoute>} />
           <Route path="/service-orders/:id" element={<ProtectedRoute><ServiceOrderDetail /></ProtectedRoute>} />
 
           <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
@@ -67,7 +66,6 @@ const AppContent: React.FC = () => {
           <Route path="/provider" element={<ProtectedRoute><ProviderPage /></ProtectedRoute>} />
           <Route path="/activity-log" element={<ProtectedRoute><ActivityLogPage /></ProtectedRoute>} />
           <Route path="/my-orders" element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
-          <Route path="/service-offers/create" element={<ProtectedRoute><CreateServiceOffer /></ProtectedRoute>}/>
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -230,6 +230,13 @@ export const ServiceOfferDetail: React.FC = () => {
               <Link to="/service-orders" className="text-sm text-blue-700 underline mt-2 inline-block">
                 Go to Service Orders →
               </Link>
+                <button
+                  className="text-sm text-blue-700 underline"
+                  onClick={() => navigate(0)}
+                  type="button"
+                >
+                  Refresh
+                </button>
             </div>
           )}
         </div>

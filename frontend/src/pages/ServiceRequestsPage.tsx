@@ -1,9 +1,38 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
-import { Search, Filter, Calendar, MapPin } from "lucide-react";
+import { Search, Filter, Calendar, MapPin, Clock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { getServiceRequests } from "../api/serviceRequests";
+
+function parseDeadline(deadline?: string | null): Date | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDeadline(deadline?: string | null): string {
+  const d = parseDeadline(deadline);
+  if (!d) return "-";
+  return d.toLocaleString(); // uses browser locale/timezone
+}
+
+function getCountdownText(deadline?: string | null): { text: string; isExpired: boolean } {
+  const d = parseDeadline(deadline);
+  if (!d) return { text: "No deadline", isExpired: false };
+
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) return { text: "Expired", isExpired: true };
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const mins = totalMinutes % 60;
+
+  if (days > 0) return { text: `${days}d ${hours}h left`, isExpired: false };
+  if (hours > 0) return { text: `${hours}h ${mins}m left`, isExpired: false };
+  return { text: `${mins}m left`, isExpired: false };
+}
 
 export const ServiceRequestsPage: React.FC = () => {
   const { tokens, currentUser } = useApp();
@@ -92,7 +121,6 @@ export const ServiceRequestsPage: React.FC = () => {
               <option value="all">All Status</option>
               <option value="Open">Open</option>
               <option value="Closed">Closed</option>
-              <option value="Draft">Draft</option>
             </select>
           </div>
         </div>
@@ -127,6 +155,9 @@ export const ServiceRequestsPage: React.FC = () => {
                     Location
                   </th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
+                    Offer Deadline
+                  </th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 uppercase tracking-wider">
@@ -134,50 +165,80 @@ export const ServiceRequestsPage: React.FC = () => {
                   </th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-gray-200">
-                {filteredRequests.map((request) => (
-                  <tr key={request.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-900">{request.id}</td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{request.title}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Contract: {request.linkedContractId || "N/A"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{request.role}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-xs text-gray-700">
-                        {request.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">
-                      <div className="flex items-center gap-1">
-                        <Calendar size={14} className="text-gray-400" />
-                        {request.totalManDays} days
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1 text-sm text-gray-700">
-                        <MapPin size={14} className="text-gray-400" />
-                        {request.performanceLocation}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={request.status} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Link to={`/service-requests/${request.id}`} className="text-sm text-blue-600 hover:text-blue-700">
-                        View Details
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {filteredRequests.map((request) => {
+                  const countdown = getCountdownText(request.offerDeadlineAt);
+                  return (
+                    <tr key={request.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm text-gray-900">{request.id}</td>
+
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">{request.title}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Contract: {request.linkedContractId || "N/A"}
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-gray-700">{request.role}</td>
+
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-xs text-gray-700">
+                          {request.type}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div className="flex items-center gap-1">
+                          <Calendar size={14} className="text-gray-400" />
+                          {request.totalManDays} days
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1 text-sm text-gray-700">
+                          <MapPin size={14} className="text-gray-400" />
+                          {request.performanceLocation}
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">
+                          {formatDeadline(request.offerDeadlineAt)}
+                        </div>
+                        <div
+                          className={`text-xs mt-1 inline-flex items-center gap-1 ${
+                            countdown.isExpired ? "text-red-600" : "text-gray-500"
+                          }`}
+                        >
+                          <Clock size={12} className={countdown.isExpired ? "text-red-500" : "text-gray-400"} />
+                          {countdown.text}
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <StatusBadge status={request.status} />
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <Link
+                          to={`/service-requests/${request.id}`}
+                          className="text-sm text-blue-600 hover:text-blue-700"
+                        >
+                          View Details
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {filteredRequests.length === 0 && (
-            <div className="p-8 text-center text-gray-500">No service requests found matching your criteria</div>
+            <div className="p-8 text-center text-gray-500">
+              No service requests found matching your criteria
+            </div>
           )}
         </div>
       )}
