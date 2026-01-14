@@ -25,16 +25,32 @@ class ContractListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, CanViewContracts]
 
     def get_queryset(self):
-        # Visible contracts to providers: Published and beyond.
-        # Keep Draft hidden because Draft is Group2 internal.
-        return Contract.objects.exclude(status="Draft").order_by("-published_at", "-created_at")
+        user_provider_id = getattr(self.request.user, "provider_id", None)
+
+        open_qs = Contract.objects.filter(status__in=["Published", "In Negotiation"])
+        mine_qs = Contract.objects.filter(
+            status__in=["Awarded", "Active", "Expired"],
+            awarded_provider_id=user_provider_id
+        )
+
+        return (open_qs | mine_qs).exclude(status="Draft").distinct().order_by("-published_at", "-created_at")
 
 
 class ContractDetailView(generics.RetrieveAPIView):
     serializer_class = ContractSerializer
     permission_classes = [IsAuthenticated, CanViewContracts]
-    queryset = Contract.objects.exclude(status="Draft")
     lookup_field = "id"
+
+    def get_queryset(self):
+        user_provider_id = getattr(self.request.user, "provider_id", None)
+
+        open_qs = Contract.objects.filter(status__in=["Published", "In Negotiation"])
+        mine_qs = Contract.objects.filter(
+            status__in=["Awarded", "Active", "Expired"],
+            awarded_provider_id=user_provider_id,
+        )
+
+        return (open_qs | mine_qs).exclude(status="Draft").distinct()
 
 
 class ContractOfferListCreateView(generics.ListCreateAPIView):
@@ -59,23 +75,19 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
             return [IsAuthenticated(), CanSubmitContractOffer()]
         return [IsAuthenticated(), CanViewContracts()]
 
-    def post(self, request, *args, **kwargs):
-        """
-        Return full ContractOfferSerializer output after creation.
-        """
-        contract = self.get_contract()
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return ContractOfferCreateSerializer
+        return ContractOfferSerializer
 
-        create_ser = ContractOfferCreateSerializer(
-            data=request.data,
-            context={"request": request, "contract": contract},
-        )
-        create_ser.is_valid(raise_exception=True)
-        offer = create_ser.save()
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["contract"] = self.get_contract()
+        return ctx
 
-        return Response(
-            ContractOfferSerializer(offer).data,
-            status=status.HTTP_201_CREATED
-        )
+    def perform_create(self, serializer):
+        # create serializer will create and return the offer
+        serializer.save()
 
 
 class Group2ContractAwardView(APIView):

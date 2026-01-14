@@ -5,6 +5,8 @@ from activitylog.utils import log_activity
 
 class ContractSerializer(serializers.ModelSerializer):
     publishedAt = serializers.DateTimeField(source="published_at", allow_null=True, required=False)
+    offerDeadline = serializers.DateTimeField(source="offer_deadline", allow_null=True, required=False)
+
     startDate = serializers.DateField(source="start_date", allow_null=True, required=False)
     endDate = serializers.DateField(source="end_date", allow_null=True, required=False)
 
@@ -16,25 +18,41 @@ class ContractSerializer(serializers.ModelSerializer):
 
     allowedRequestConfigs = serializers.JSONField(source="allowed_request_configs", allow_null=True, required=False)
 
+    # ✅ Figma fields
+    acceptedRequestTypes = serializers.JSONField(source="accepted_request_types", required=False)
+    allowedDomains = serializers.JSONField(source="allowed_domains", required=False)
+    allowedRoles = serializers.JSONField(source="allowed_roles", required=False)
+    experienceLevels = serializers.JSONField(source="experience_levels", required=False)
+
+    offerCyclesAndDeadlines = serializers.JSONField(source="offer_cycles_and_deadlines", required=False)
+    pricingLimits = serializers.JSONField(source="pricing_limits", required=False)
+    versionHistory = serializers.JSONField(source="version_history", required=False)
+
     awardedProviderId = serializers.CharField(source="awarded_provider_id", allow_null=True, required=False)
 
     class Meta:
         model = Contract
         fields = [
-            "id",
-            "title",
-            "status",
-            "kind",
-            "publishedAt",
-            "startDate",
-            "endDate",
-            "scopeOfWork",
-            "termsAndConditions",
-            "functionalWeight",
-            "commercialWeight",
+            "id", "title", "status", "kind",
+            "publishedAt", "offerDeadline",
+            "startDate", "endDate",
+            "scopeOfWork", "termsAndConditions",
+            "functionalWeight", "commercialWeight",
             "allowedRequestConfigs",
+            "acceptedRequestTypes", "allowedDomains", "allowedRoles", "experienceLevels",
+            "offerCyclesAndDeadlines", "pricingLimits", "versionHistory",
             "awardedProviderId",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        my_pid = getattr(getattr(request, "user", None), "provider_id", None)
+
+        if instance.awarded_provider_id and instance.awarded_provider_id != my_pid:
+            data["awardedProviderId"] = None
+        return data
+
 
 
 class Group2AwardContractSerializer(serializers.Serializer):

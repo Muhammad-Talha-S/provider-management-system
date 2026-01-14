@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, CheckCircle, Star, Languages, AlertCircle, FileText } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  MapPin,
+  CheckCircle,
+  Star,
+  Languages,
+  AlertCircle,
+  FileText,
+  Clock,
+  RefreshCw,
+} from "lucide-react";
 import { StatusBadge } from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
 
@@ -8,6 +19,57 @@ import type { ServiceRequest, Specialist } from "../types";
 import { getServiceRequestById } from "../api/serviceRequests";
 import { getSpecialists } from "../api/specialists";
 import { createServiceOffer } from "../api/serviceOffers";
+
+function parseDeadline(deadline?: string | null): Date | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDeadline(deadline?: string | null): string {
+  const d = parseDeadline(deadline);
+  if (!d) return "-";
+  return d.toLocaleString();
+}
+
+function getCountdown(deadline?: string | null): { isExpired: boolean; label: string } {
+  const d = parseDeadline(deadline);
+  if (!d) return { isExpired: false, label: "No deadline configured" };
+
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) return { isExpired: true, label: "Expired" };
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const mins = totalMinutes % 60;
+
+  if (days > 0) return { isExpired: false, label: `${days}d ${hours}h left` };
+  if (hours > 0) return { isExpired: false, label: `${hours}h ${mins}m left` };
+  return { isExpired: false, label: `${mins}m left` };
+}
+
+function normalizeApiErrorMessage(e: any): string {
+  // DRF errors commonly come as {detail: "..."} or field errors
+  const msg = e?.message || "";
+
+  // Friendly mapping for your milestone rules
+  const lower = msg.toLowerCase();
+  if (lower.includes("deadline") && (lower.includes("passed") || lower.includes("expired"))) {
+    return "Offer deadline has passed. You can no longer submit offers for this request.";
+  }
+  if (lower.includes("not allowed") && lower.includes("award")) {
+    return "Your provider is not eligible for this request (contract not awarded to your provider).";
+  }
+  if (lower.includes("not allowed") && (lower.includes("type") || lower.includes("request type"))) {
+    return "This request type is not allowed by the contract configuration.";
+  }
+  if (lower.includes("closed")) {
+    return "This service request is closed and no longer accepting offers.";
+  }
+
+  return msg || "Failed to create offer";
+}
 
 export const CreateServiceOffer: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -31,39 +93,48 @@ export const CreateServiceOffer: React.FC = () => {
   const [mustHaveMatch, setMustHaveMatch] = useState<string>("");
   const [niceToHaveMatch, setNiceToHaveMatch] = useState<string>("");
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
   const access = tokens?.access || "";
 
+  const deadlineInfo = useMemo(() => getCountdown(request?.offerDeadlineAt), [request?.offerDeadlineAt]);
+  const isOpen = request?.status === "Open";
+  const isDeadlineExpired = deadlineInfo.isExpired;
+
+  const hardBlockedReason = useMemo(() => {
+    if (!request) return null;
+    if (!isOpen) return "This service request is closed and no longer accepting offers.";
+    if (isDeadlineExpired) return "Offer deadline has passed. You can no longer submit offers for this request.";
+    return null;
+  }, [request, isOpen, isDeadlineExpired]);
+
+  const refresh = async () => {
+    if (!access || !requestId) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const sr = await getServiceRequestById(access, requestId);
+      setRequest(sr);
+
+      const sp = await getSpecialists(access);
+      // keep only current provider specialists + not fully booked
+      const filtered = sp.filter(
+        (s: any) =>
+          s.providerId === currentProvider?.id &&
+          (s.availability || "") !== "Fully Booked"
+      );
+      setSpecialists(filtered);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const run = async () => {
-      if (!access || !requestId) {
-        setErr("Missing session or requestId");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setErr(null);
-
-        const sr = await getServiceRequestById(access, requestId);
-        setRequest(sr);
-
-        const sp = await getSpecialists(access);
-        // keep only current provider specialists + not fully booked
-        const filtered = sp.filter(
-          (s: any) =>
-            s.providerId === currentProvider?.id &&
-            (s.availability || "") !== "Fully Booked"
-        );
-        setSpecialists(filtered);
-      } catch (e: any) {
-        setErr(e?.message || "Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    run();
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, requestId, currentProvider?.id]);
 
   const selectedSpecialist = useMemo(
@@ -80,23 +151,40 @@ export const CreateServiceOffer: React.FC = () => {
 
   const checkBasicValidity = () => {
     if (!request) return { ok: false, msg: "Request missing" };
+    if (hardBlockedReason) return { ok: false, msg: hardBlockedReason };
+
     if (!selectedSpecialistId) return { ok: false, msg: "Select a specialist" };
     if (!dailyRate) return { ok: false, msg: "Enter daily rate" };
     if (contractualRelationship === "Subcontractor" && !subcontractorCompany.trim())
       return { ok: false, msg: "Subcontractor company is required" };
+
+    // Optional: validate percentages in range (when provided)
+    const mh = mustHaveMatch ? Number(mustHaveMatch) : null;
+    const nh = niceToHaveMatch ? Number(niceToHaveMatch) : null;
+    if (mh != null && (mh < 0 || mh > 100)) return { ok: false, msg: "Must-Have Match must be between 0 and 100" };
+    if (nh != null && (nh < 0 || nh > 100)) return { ok: false, msg: "Nice-to-Have Match must be between 0 and 100" };
+
     return { ok: true, msg: "" };
   };
 
   const handleSubmit = async (asDraft: boolean) => {
+    setSubmitError(null);
+
     const v = checkBasicValidity();
-    if (!v.ok) return alert(v.msg);
+    if (!v.ok) {
+      setSubmitError(v.msg);
+      return;
+    }
 
     if (!asDraft && (!mustHaveMatch || !niceToHaveMatch)) {
-      return alert("For submission, please fill Must-Have Match and Nice-to-Have Match (%)");
+      setSubmitError("For submission, please fill Must-Have Match and Nice-to-Have Match (%)");
+      return;
     }
 
     try {
       if (!access || !request) throw new Error("Not authenticated");
+
+      setSubmitting(true);
 
       await createServiceOffer(access, {
         serviceRequestId: request.id,
@@ -113,7 +201,9 @@ export const CreateServiceOffer: React.FC = () => {
 
       navigate("/service-offers");
     } catch (e: any) {
-      alert(e?.message || "Failed to create offer");
+      setSubmitError(normalizeApiErrorMessage(e));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -133,6 +223,20 @@ export const CreateServiceOffer: React.FC = () => {
     );
   }
 
+  const canSubmitOffer =
+    !!selectedSpecialistId &&
+    !!dailyRate &&
+    !!mustHaveMatch &&
+    !!niceToHaveMatch &&
+    !hardBlockedReason &&
+    !submitting;
+
+  const canSaveDraft =
+    !!selectedSpecialistId &&
+    !!dailyRate &&
+    !hardBlockedReason &&
+    !submitting;
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -150,8 +254,43 @@ export const CreateServiceOffer: React.FC = () => {
             <h1 className="text-2xl text-gray-900">Create Service Offer</h1>
             <p className="text-gray-500 mt-1">Respond to Service Request: {request.id}</p>
           </div>
+
+          <button
+            onClick={refresh}
+            className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+            title="Refresh request rules/deadline"
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
         </div>
       </div>
+
+      {/* Blocking banner (Milestone 5 UX) */}
+      {hardBlockedReason && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="text-red-600 mt-0.5" />
+            <div>
+              <div className="text-sm text-red-900 font-medium">Offer creation blocked</div>
+              <div className="text-sm text-red-700 mt-1">{hardBlockedReason}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API submit error banner */}
+      {submitError && !hardBlockedReason && (
+        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="text-yellow-700 mt-0.5" />
+            <div>
+              <div className="text-sm text-yellow-900 font-medium">Cannot create offer</div>
+              <div className="text-sm text-yellow-800 mt-1">{submitError}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column */}
@@ -175,6 +314,23 @@ export const CreateServiceOffer: React.FC = () => {
                 <label className="text-xs text-gray-500">Technology</label>
                 <p className="text-gray-900 mt-1">{request.technology}</p>
               </div>
+
+              <div>
+                <label className="text-xs text-gray-500">Offer Deadline</label>
+                <div className="mt-1">
+                  <div className="text-sm text-gray-900">{formatDeadline(request.offerDeadlineAt)}</div>
+                  <div className={`text-xs mt-1 inline-flex items-center gap-1 ${deadlineInfo.isExpired ? "text-red-600" : "text-gray-500"}`}>
+                    <Clock size={12} className={deadlineInfo.isExpired ? "text-red-500" : "text-gray-400"} />
+                    {deadlineInfo.label}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500">Cycles</label>
+                <p className="text-gray-900 mt-1">{request.cycles ?? "-"}</p>
+              </div>
+
               <div>
                 <label className="text-xs text-gray-500">Experience Level</label>
                 <p className="text-gray-900 mt-1">{request.experienceLevel}</p>
@@ -188,7 +344,7 @@ export const CreateServiceOffer: React.FC = () => {
                 <div className="flex items-center gap-1 mt-1">
                   <Calendar size={14} className="text-gray-400" />
                   <p className="text-gray-900">
-                    {request.startDate} - {request.endDate}
+                    {request.startDate || "-"} - {request.endDate || "-"}
                   </p>
                 </div>
               </div>
@@ -338,6 +494,7 @@ export const CreateServiceOffer: React.FC = () => {
                       onChange={(e) => setDailyRate(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       placeholder="Enter daily rate"
+                      disabled={!!hardBlockedReason}
                     />
                   </div>
 
@@ -349,6 +506,7 @@ export const CreateServiceOffer: React.FC = () => {
                       onChange={(e) => setTravelCost(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       placeholder="Enter travel cost"
+                      disabled={!!hardBlockedReason}
                     />
                   </div>
                 </div>
@@ -361,6 +519,7 @@ export const CreateServiceOffer: React.FC = () => {
                     value={contractualRelationship}
                     onChange={(e) => setContractualRelationship(e.target.value as any)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!!hardBlockedReason}
                   >
                     <option value="Employee">Employee</option>
                     <option value="Freelancer">Freelancer</option>
@@ -379,6 +538,7 @@ export const CreateServiceOffer: React.FC = () => {
                       onChange={(e) => setSubcontractorCompany(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       placeholder="Enter company name"
+                      disabled={!!hardBlockedReason}
                     />
                   </div>
                 )}
@@ -396,6 +556,7 @@ export const CreateServiceOffer: React.FC = () => {
                       max="100"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       placeholder="0-100"
+                      disabled={!!hardBlockedReason}
                     />
                   </div>
 
@@ -411,6 +572,7 @@ export const CreateServiceOffer: React.FC = () => {
                       max="100"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       placeholder="0-100"
+                      disabled={!!hardBlockedReason}
                     />
                   </div>
                 </div>
@@ -421,7 +583,7 @@ export const CreateServiceOffer: React.FC = () => {
 
         {/* Right column */}
         <div className="space-y-6">
-          {/* Linked contract quick block (string) */}
+          {/* Linked contract quick block */}
           {!!request.linkedContractId && (
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
@@ -457,7 +619,9 @@ export const CreateServiceOffer: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Subtotal</span>
-                  <span className="text-gray-900">€{(parseFloat(dailyRate) * request.totalManDays).toLocaleString()}</span>
+                  <span className="text-gray-900">
+                    €{(parseFloat(dailyRate || "0") * request.totalManDays).toLocaleString()}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Onsite Days</span>
@@ -465,7 +629,9 @@ export const CreateServiceOffer: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Travel Cost</span>
-                  <span className="text-gray-900">€{((parseFloat(travelCost) || 0) * request.onsiteDays).toLocaleString()}</span>
+                  <span className="text-gray-900">
+                    €{((parseFloat(travelCost || "0") || 0) * request.onsiteDays).toLocaleString()}
+                  </span>
                 </div>
                 <div className="border-t border-gray-200 pt-3 flex justify-between">
                   <span className="text-gray-900">Total Cost</span>
@@ -482,26 +648,22 @@ export const CreateServiceOffer: React.FC = () => {
             <div className="space-y-3">
               <button
                 onClick={() => handleSubmit(false)}
-                disabled={!selectedSpecialistId || !dailyRate || !mustHaveMatch || !niceToHaveMatch}
+                disabled={!canSubmitOffer}
                 className={`w-full px-4 py-3 rounded-lg transition-colors ${
-                  selectedSpecialistId && dailyRate && mustHaveMatch && niceToHaveMatch
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  canSubmitOffer ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-300 text-gray-500 cursor-not-allowed"
                 }`}
               >
-                Submit Offer
+                {submitting ? "Submitting..." : "Submit Offer"}
               </button>
 
               <button
                 onClick={() => handleSubmit(true)}
-                disabled={!selectedSpecialistId || !dailyRate}
+                disabled={!canSaveDraft}
                 className={`w-full px-4 py-3 rounded-lg border transition-colors ${
-                  selectedSpecialistId && dailyRate
-                    ? "border-gray-300 text-gray-700 hover:bg-gray-50"
-                    : "border-gray-200 text-gray-400 cursor-not-allowed"
+                  canSaveDraft ? "border-gray-300 text-gray-700 hover:bg-gray-50" : "border-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >
-                Save as Draft
+                {submitting ? "Saving..." : "Save as Draft"}
               </button>
 
               <button
