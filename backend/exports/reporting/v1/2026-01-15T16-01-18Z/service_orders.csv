@@ -1,0 +1,47 @@
+service_order_id,service_offer_id,service_request_id,provider_id,specialist_user_id,title,start_date,end_date,location,man_days,total_cost,status,created_at
+30,87,SR033,P002,SP2015,SAP Consultant – Azure (Team),2024-02-18,2024-03-09,Onshore,17,14501.00,Completed,2024-01-26T17:00:00+00:00
+44,124,SR049,P003,SP3004,Project Manager – SIEM (Single),2024-03-04,2024-03-24,Hybrid,19,18775.00,Completed,2024-02-24T15:45:00+00:00
+14,37,SR015,P001,SP1003,Data Analyst – SIEM (Single),2024-03-11,2024-03-31,Onshore,19,12977.00,Completed,2024-03-01T13:30:00+00:00
+43,119,SR047,P002,SP2003,IT Consultant – Azure (Work Contract),2024-03-23,2024-05-22,Hybrid,53,42347.00,Active,2024-03-10T10:45:00+00:00
+12,30,SR012,P003,SP3012,DevOps Engineer – Data Platform (Multi),2024-04-21,2024-07-20,Onshore,64,26240.00,Completed,2024-03-13T17:45:00+00:00
+41,114,SR045,P002,SP2001,Data Analyst – Data Platform (Work Contract),2024-04-25,2024-05-25,Hybrid,25,10450.00,Completed,2024-04-17T14:15:00+00:00
+21,61,SR024,P002,SP2005,Cloud Architect – SAP S/4HANA (Work Contract),2024-05-11,2024-07-10,Onsite,43,35849.00,Completed,2024-05-06T14:45:00+00:00
+20,60,SR023,P001,SP1002,QA Engineer – Data Platform (Multi),2024-05-30,2024-08-28,Onshore,66,34848.00,Completed,2024-05-19T10:00:00+00:00
+32,90,SR035,P001,SP1001,IT Consultant – AWS (Single),2024-06-27,2024-07-02,Onshore,4,1720.00,Completed,2024-06-04T18:30:00+00:00
+15,41,SR016,P003,SP3007,Project Manager – React/TypeScript (Single),2024-07-11,2024-07-31,Onsite,14,14620.00,Completed,2024-06-29T16:45:00+00:00
+3,8,SR003,P001,SP1005,Data Analyst – Python/Django (Single),2024-07-22,2024-08-01,Hybrid,9,8684.00,Completed,2024-07-12T15:15:00+00:00
+18,52,SR020,P001,SP1002,Project Manager – React/TypeScript (Work Contract),2024-09-13,2024-09-16,Onsite,2,1086.00,Completed,2024-08-11T11:45:00+00:00
+2,6,SR002,P003,SP3008,IT Consultant – SAP S/4HANA (Single),2024-09-13,2024-10-13,Hybrid,19,9556.00,Completed,2024-08-22T16:15:00+00:00
+37,102,SR040,P001,SP1002,UX Designer – React/TypeScript (Team),2024-09-19,2024-09-24,Hybrid,3,1629.00,Completed,2024-09-05T14:45:00+00:00
+6,14,SR006,P003,SP3001,IT Consultant – SIEM (Work Contract),2024-10-13,2024-10-28,Hybrid,9,8343.00,Completed,2024-09-26T08:30:00+00:00
+4,10,SR004,P002,SP2010,Project Manager – Kubernetes (Team),2024-11-04,2025-03-04,Onshore,101,60499.00,Completed,2024-09-29T18:00:00+00:00
+16,45,SR018,P001,SP1004,IT Consultant – SIEM (Single),2024-10-01,2024-10-04,Onshore,2,866.00,Completed,2024-10-03T11:15:00+00:00
+17,49,SR019,P003,SP3016,Backend Engineer – Kubernetes (Work Contract),2024-10-18,2024-10-23,Hybrid,4,4380.00,Active,2024-10-04T16:30:00+00:00
+31,88,SR034,P002,SP2008,SAP Consultant – Data Platform (Work Contract),2024-11-08,2024-11-18,Hybrid,9,8757.00,Completed,2024-10-25T08:45:00+00:00
+22,65,SR025,P003,SP3004,Cloud Architect – AWS (Multi),2024-12-27,2025-01-01,Onsite,3,2685.00,Completed,2025-01-02T15:15:00+00:00
+1,3,SR001,P002,SP2006,IT Consultant – Python/Django (Work Contract),2025-01-26,2025-04-26,Onsite,62,28148.00,Completed,2025-01-11T18:00:00+00:00
+26,77,SR029,P003,SP3005,Backend Engineer – Kubernetes (Team),2025-01-10,2025-01-15,Hybrid,4,3542.00,Completed,2025-01-13T09:00:00+00:00
+40,112,SR044,P001,SP1004,QA Engineer – AWS (Work Contract),2025-01-30,2025-05-30,Hybrid,86,43468.00,Completed,2025-01-13T16:30:00+00:00
+24,69,SR027,P001,SP1009,UX Designer – Kubernetes (Single),2025-03-17,2025-06-15,Onsite,68,54112.00,Active,2025-02-17T17:15:00+00:00
+9,23,SR009,P003,SP3003,Project Manager – Kubernetes (Work Contract),2025-03-20,2025-03-25,Onshore,3,2955.00,Completed,2025-03-02T17:00:00+00:00
+27,78,SR030,P001,SP1002,Backend Engineer – AWS (Single),2025-04-26,2025-06-25,Onsite,50,24200.00,Completed,2025-04-15T15:00:00+00:00
+36,100,SR039,P003,SP3007,SAP Consultant – React/TypeScript (Single),2025-05-16,2025-07-15,Onshore,39,32448.00,Completed,2025-04-16T15:30:00+00:00
+10,25,SR010,P002,SP2006,Data Analyst – Data Platform (Single),2025-05-05,2025-09-02,Onsite,102,44456.00,Completed,2025-04-30T17:00:00+00:00
+7,18,SR007,P002,SP2004,Backend Engineer – AWS (Single),2025-06-10,2025-06-30,Onsite,17,9139.00,Completed,2025-05-20T13:00:00+00:00
+34,95,SR037,P001,SP1006,Backend Engineer – Python/Django (Work Contract),2025-06-11,2025-06-26,Onshore,12,7308.00,Completed,2025-06-12T11:15:00+00:00
+8,20,SR008,P002,SP2001,QA Engineer – Data Platform (Work Contract),2025-07-17,2025-08-06,Onshore,18,8226.00,Active,2025-06-18T14:00:00+00:00
+13,35,SR014,P001,SP1006,SAP Consultant – Kubernetes (Work Contract),2025-08-06,2025-11-04,Onsite,60,45960.00,Active,2025-07-17T18:15:00+00:00
+46,130,SR051,P001,SP1004,IT Consultant – Python/Django (Multi),2025-08-27,2025-09-01,Onsite,4,1960.00,Completed,2025-07-26T14:00:00+00:00
+38,104,SR041,P001,SP1004,QA Engineer – Kubernetes (Single),2025-08-31,2025-09-05,Onsite,4,1820.00,Active,2025-08-24T14:45:00+00:00
+29,84,SR032,P003,SP3008,Cybersecurity Specialist – Azure (Work Contract),2025-10-05,2026-01-03,Onshore,72,33624.00,Active,2025-09-02T11:00:00+00:00
+23,66,SR026,P003,SP3019,Cloud Architect – SAP S/4HANA (Single),2025-09-20,2025-10-05,Hybrid,10,5340.00,Completed,2025-09-18T16:15:00+00:00
+39,111,SR043,P002,SP2005,UX Designer – Kubernetes (Single),2025-10-15,2025-11-04,Hybrid,17,11970.00,Completed,2025-10-04T18:30:00+00:00
+33,93,SR036,P001,SP1005,QA Engineer – SAP S/4HANA (Multi),2025-11-22,2025-12-22,Hybrid,23,22435.00,Active,2025-10-22T13:15:00+00:00
+35,96,SR038,P001,SP1006,Data Analyst – Data Platform (Single),2025-12-08,2025-12-18,Onsite,7,4235.00,Completed,2025-10-31T13:30:00+00:00
+11,28,SR011,P001,SP1002,Cloud Architect – AWS (Work Contract),2025-11-14,2026-02-12,Onsite,62,35088.00,Active,2025-11-02T15:30:00+00:00
+28,81,SR031,P001,SP1007,QA Engineer – SIEM (Work Contract),2025-11-25,2025-11-30,Hybrid,3,1866.00,Completed,2025-11-06T13:15:00+00:00
+42,117,SR046,P002,SP2009,Cloud Architect – AWS (Single),2025-11-29,2026-01-28,Hybrid,46,45126.00,Active,2025-11-21T15:30:00+00:00
+19,58,SR022,P002,SP2009,Cybersecurity Specialist – AWS (Work Contract),2026-01-03,2026-02-02,Hybrid,18,18254.00,Active,2025-12-24T10:45:00+00:00
+45,129,SR050,P001,SP1006,Cloud Architect – React/TypeScript (Work Contract),2026-01-08,2026-01-13,Onshore,3,1890.00,Completed,2025-12-27T08:45:00+00:00
+5,12,SR005,P002,SP2014,Data Analyst – Kubernetes (Work Contract),2026-01-29,2026-02-01,Onsite,2,1550.00,Active,2025-12-27T11:45:00+00:00
+25,72,SR028,P001,SP1003,Cloud Architect – Kubernetes (Team),2026-02-17,2026-03-09,Onshore,19,13756.00,Active,2026-01-08T14:15:00+00:00

@@ -1,0 +1,46 @@
+[
+    {
+        "id": 24,
+        "requestNumber": "SR-000024",
+        "title": "E-commerce Platform Redesign",
+        "type": "SINGLE",
+        "requestedByUsername": "John",
+        "requestedByRole": "PROJECT_MANAGER",
+        "projectId": "PRJ-QBG470",
+        "projectName": "E-commerce Platform Redesign",
+        "contractId": "2",
+        "contractSupplier": "TCS",
+        "startDate": "2024-01-15",
+        "endDate": "2024-06-30",
+        "performanceLocation": "Onsite ",
+        "maxOffers": 1,
+        "maxAcceptedOffers": 1,
+        "requiredLanguages": [
+            "English"
+        ],
+        "mustHaveCriteria": [
+            "From Frankfurt"
+        ],
+        "niceToHaveCriteria": [
+            "Speak German"
+        ],
+        "taskDescription": "Complete overhaul of the customer-facing e-commerce platform including UX research, wireframing, UI design, frontend development with React, backend API integration, payment gateway setup, and comprehensive testing across devices.",
+        "furtherInformation": "Skills: Node.js, React, PostgreSQL, Figma, REST API, Payment Integration",
+        "status": "APPROVED_FOR_BIDDING",
+        "preferredOfferId": null,
+        "roles": [
+            {
+                "domain": "Software Development",
+                "roleName": "Java Developer",
+                "technology": "Spring Boot",
+                "experienceLevel": "Senior",
+                "manDays": 1,
+                "onsiteDays": 1
+            }
+        ],
+        "biddingCycleDays": 3,
+        "biddingStartAt": "2026-01-13T02:10:23.781090Z",
+        "biddingEndAt": "2026-01-16T02:10:23.781090Z",
+        "biddingActive": true
+    }
+]
