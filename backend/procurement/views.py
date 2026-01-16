@@ -8,8 +8,11 @@ from rest_framework.views import APIView
 from .auth import Group3ApiKeyAuthentication
 from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderChangeRequest
 from activitylog.utils import log_activity
+from contracts.models import Contract
+
 from .serializers import (
     ServiceRequestSerializer,
+    Group3ServiceRequestCreateSerializer,
     ServiceOfferSerializer,
     ServiceOfferCreateSerializer,
     ServiceOfferStatusUpdateSerializer,
@@ -24,19 +27,86 @@ from .serializers import (
 
 
 # -------------------------
+# Milestone 4: helper for SR visibility
+# -------------------------
+def _eligible_contract_ids_for_provider(provider_id: str) -> list[str]:
+    return list(
+        Contract.objects.filter(status="Active", awarded_provider_id=provider_id).values_list("id", flat=True)
+    )
+
+
+def _assert_can_view_service_requests(user):
+    # Contract Coordinator must NOT access SR pages (your rule)
+    if user.role == "Contract Coordinator":
+        raise PermissionDenied("Contract Coordinator cannot access Service Requests.")
+
+
+# -------------------------
 # Service Requests (Provider Portal)
 # -------------------------
 class ServiceRequestListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = ServiceRequest.objects.all().order_by("-created_at")
     serializer_class = ServiceRequestSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        _assert_can_view_service_requests(user)
+
+        # Provider Admin / Supplier Rep / Specialist => only SRs for awarded Active contracts
+        if user.role in ["Provider Admin", "Supplier Representative", "Specialist"]:
+            contract_ids = _eligible_contract_ids_for_provider(user.provider_id)
+            return ServiceRequest.objects.filter(
+                linked_contract_id__in=contract_ids
+            ).order_by("-created_at")
+
+        raise PermissionDenied("Not allowed.")
 
 
 class ServiceRequestDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = ServiceRequest.objects.all()
     serializer_class = ServiceRequestSerializer
     lookup_field = "id"
+
+    def get_queryset(self):
+        user = self.request.user
+        _assert_can_view_service_requests(user)
+
+        if user.role in ["Provider Admin", "Supplier Representative", "Specialist"]:
+            contract_ids = _eligible_contract_ids_for_provider(user.provider_id)
+            return ServiceRequest.objects.filter(linked_contract_id__in=contract_ids)
+
+        raise PermissionDenied("Not allowed.")
+
+
+# -------------------------
+# Group3 creates Service Requests (API-key) - Milestone 5
+# -------------------------
+class Group3ServiceRequestCreateView(APIView):
+    authentication_classes = [Group3ApiKeyAuthentication]
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        ser = Group3ServiceRequestCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        sr = ser.save()
+
+        log_activity(
+            provider_id=None,  # system event; do not leak to all providers
+            actor_type="GROUP3_SYSTEM",
+            actor_user=None,
+            event_type="PROC_SR_CREATED",
+            entity_type="ServiceRequest",
+            entity_id=sr.id,
+            message=f"Group3 created Service Request {sr.id} for contract {sr.linked_contract_id}",
+            metadata={
+                "serviceRequestId": sr.id,
+                "linkedContractId": sr.linked_contract_id,
+                "offerDeadlineAt": sr.offer_deadline_at.isoformat() if sr.offer_deadline_at else None,
+                "cycles": sr.cycles,
+            },
+        )
+
+        return Response(ServiceRequestSerializer(sr).data, status=201)
 
 
 # -------------------------
@@ -65,7 +135,6 @@ class ServiceOfferListCreateView(generics.ListCreateAPIView):
 
         offer = serializer.save()
 
-        # ---- Log: Offer Created ----
         log_activity(
             provider_id=offer.provider_id,
             actor_type="USER",
@@ -80,13 +149,11 @@ class ServiceOfferListCreateView(generics.ListCreateAPIView):
             },
         )
 
-        # ---- Handle Submitted status ----
         if offer.status == "Submitted":
             if offer.submitted_at is None:
                 offer.submitted_at = timezone.now()
                 offer.save(update_fields=["submitted_at"])
 
-            # ---- Log: Offer Submitted ----
             log_activity(
                 provider_id=offer.provider_id,
                 actor_type="USER",
@@ -112,7 +179,7 @@ class ServiceOfferStatusUpdateView(APIView):
 
     def patch(self, request, id: int):
         try:
-            offer = ServiceOffer.objects.get(id=id, provider=request.user.provider)
+            offer = ServiceOffer.objects.select_related("service_request").get(id=id, provider=request.user.provider)
         except ServiceOffer.DoesNotExist:
             raise NotFound("Offer not found.")
 
@@ -147,7 +214,8 @@ class ServiceOfferStatusUpdateView(APIView):
 
 
 # -------------------------
-# Service Orders (Provider Portal)
+# Service Orders / Change Requests / Group3 decision endpoints
+# (UNCHANGED from your current file)
 # -------------------------
 class ServiceOrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -192,9 +260,6 @@ class MyOrdersView(generics.ListAPIView):
         return ServiceOrder.objects.filter(specialist=user).order_by("-created_at")
 
 
-# -------------------------
-# Change Requests (Provider Portal)
-# -------------------------
 class ServiceOrderChangeRequestListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
@@ -291,9 +356,6 @@ class ServiceOrderChangeRequestDecisionView(APIView):
         return Response(ServiceOrderChangeRequestSerializer(cr).data)
 
 
-# -------------------------
-# Group 3 (API-Key only) endpoints
-# -------------------------
 class Group3CreateExtensionView(APIView):
     authentication_classes = [Group3ApiKeyAuthentication]
     permission_classes = [AllowAny]
@@ -337,10 +399,6 @@ class Group3CreateSubstitutionView(APIView):
 
 
 class Group3OfferDecisionView(APIView):
-    """
-    Group3 decides offer => Accept/Reject (API-key secured).
-    Accept creates ServiceOrder and closes ServiceRequest.
-    """
     authentication_classes = [Group3ApiKeyAuthentication]
     permission_classes = [AllowAny]
 
@@ -359,7 +417,6 @@ class Group3OfferDecisionView(APIView):
         offer = result["offer"]
         order = result.get("order")
 
-        # ---- Log: Group3 Offer Decision ----
         decision = request.data.get("decision")
         log_activity(
             provider_id=offer.provider_id,
@@ -376,7 +433,6 @@ class Group3OfferDecisionView(APIView):
             },
         )
 
-        # ---- Log: Service Order Created (if accepted) ----
         if order:
             log_activity(
                 provider_id=order.provider_id,
@@ -397,4 +453,3 @@ class Group3OfferDecisionView(APIView):
             "order": ServiceOrderSerializer(order).data if order else None,
         }
         return Response(payload, status=200)
-

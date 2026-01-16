@@ -4,14 +4,26 @@ from django.conf import settings
 
 class ServiceRequest(models.Model):
     STATUS_CHOICES = [("Open", "Open"), ("Closed", "Closed")]
-    TYPE_CHOICES = [("Single", "Single"), ("Multi", "Multi"), ("Team", "Team"), ("Work Contract", "Work Contract")]
+    TYPE_CHOICES = [
+        ("Single", "Single"),
+        ("Multi", "Multi"),
+        ("Team", "Team"),
+        ("Work Contract", "Work Contract"),
+    ]
 
     id = models.CharField(primary_key=True, max_length=20)  # e.g. SR001
     title = models.CharField(max_length=255)
 
     type = models.CharField(max_length=30, choices=TYPE_CHOICES, default="Single")
 
-    linked_contract_id = models.CharField(max_length=20, null=True, blank=True)
+    # Milestone 4: SR must reference a contract id (from contracts.Contract)
+    linked_contract_id = models.CharField(max_length=20)
+
+    # Milestone 5: computed from contract.allowed_request_configs[type].offerDeadlineDays
+    offer_deadline_at = models.DateTimeField(null=True, blank=True)
+
+    # Milestone 5: store cycles from contract.allowed_request_configs[type].cycles
+    cycles = models.PositiveSmallIntegerField(null=True, blank=True)
 
     role = models.CharField(max_length=120)
     technology = models.CharField(max_length=255, blank=True, default="")
@@ -109,7 +121,6 @@ class ServiceOrder(models.Model):
     location = models.CharField(max_length=50, blank=True, default="Onshore")
     man_days = models.PositiveIntegerField(default=0)
 
-    # optional but useful to display on UI
     total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
@@ -130,7 +141,6 @@ class ServiceOrderChangeRequest(models.Model):
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Requested")
 
-    # actor fields
     created_by_system = models.BooleanField(default=False)
     created_by_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -150,12 +160,10 @@ class ServiceOrderChangeRequest(models.Model):
     reason = models.TextField(blank=True, default="")
     provider_response_note = models.TextField(blank=True, default="")
 
-    # extension payload
     new_end_date = models.DateField(null=True, blank=True)
     additional_man_days = models.PositiveIntegerField(null=True, blank=True)
     new_total_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
-    # substitution payload
     old_specialist = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True, blank=True,

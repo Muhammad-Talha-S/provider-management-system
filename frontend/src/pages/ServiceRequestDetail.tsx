@@ -1,9 +1,38 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
-import { ArrowLeft, FileText, Calendar, MapPin, Languages, CheckCircle, Star, Plus } from "lucide-react";
+import { ArrowLeft, FileText, Calendar, MapPin, Languages, CheckCircle, Star, Plus, Clock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { getServiceRequestById } from "../api/serviceRequests";
+
+function parseDeadline(deadline?: string | null): Date | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDeadline(deadline?: string | null): string {
+  const d = parseDeadline(deadline);
+  if (!d) return "-";
+  return d.toLocaleString();
+}
+
+function getCountdown(deadline?: string | null): { isExpired: boolean; label: string } {
+  const d = parseDeadline(deadline);
+  if (!d) return { isExpired: false, label: "No deadline configured" };
+
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) return { isExpired: true, label: "Expired" };
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const mins = totalMinutes % 60;
+
+  if (days > 0) return { isExpired: false, label: `${days}d ${hours}h left` };
+  if (hours > 0) return { isExpired: false, label: `${hours}h ${mins}m left` };
+  return { isExpired: false, label: `${mins}m left` };
+}
 
 export const ServiceRequestDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +71,10 @@ export const ServiceRequestDetail: React.FC = () => {
     run();
   }, [tokens?.access, id, currentUser?.role]);
 
+  const deadlineInfo = useMemo(() => {
+    return getCountdown(request?.offerDeadlineAt);
+  }, [request?.offerDeadlineAt]);
+
   if (loading) {
     return (
       <div className="p-8">
@@ -64,6 +97,10 @@ export const ServiceRequestDetail: React.FC = () => {
   }
 
   const contractId = request.linkedContractId;
+
+  const isOpen = request.status === "Open";
+  const isDeadlineExpired = deadlineInfo.isExpired;
+  const canCreateOffer = isOpen && !isDeadlineExpired;
 
   return (
     <div className="p-8">
@@ -100,22 +137,43 @@ export const ServiceRequestDetail: React.FC = () => {
                   <span className="px-2 py-1 bg-gray-100 rounded">{request.type}</span>
                 </p>
               </div>
+
               <div>
                 <label className="text-xs text-gray-500">Linked Contract</label>
                 <p className="text-sm text-gray-900 mt-1">{contractId}</p>
               </div>
+
+              <div>
+                <label className="text-xs text-gray-500">Offer Deadline</label>
+                <div className="mt-1">
+                  <div className="text-sm text-gray-900">{formatDeadline(request.offerDeadlineAt)}</div>
+                  <div className={`text-xs mt-1 inline-flex items-center gap-1 ${isDeadlineExpired ? "text-red-600" : "text-gray-500"}`}>
+                    <Clock size={12} className={isDeadlineExpired ? "text-red-500" : "text-gray-400"} />
+                    {deadlineInfo.label}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500">Cycles</label>
+                <p className="text-sm text-gray-900 mt-1">{request.cycles ?? "-"}</p>
+              </div>
+
               <div>
                 <label className="text-xs text-gray-500">Role</label>
                 <p className="text-sm text-gray-900 mt-1">{request.role}</p>
               </div>
+
               <div>
                 <label className="text-xs text-gray-500">Technology</label>
                 <p className="text-sm text-gray-900 mt-1">{request.technology}</p>
               </div>
+
               <div>
                 <label className="text-xs text-gray-500">Experience Level</label>
                 <p className="text-sm text-gray-900 mt-1">{request.experienceLevel}</p>
               </div>
+
               <div>
                 <label className="text-xs text-gray-500">Performance Location</label>
                 <p className="text-sm text-gray-900 mt-1">{request.performanceLocation}</p>
@@ -131,14 +189,14 @@ export const ServiceRequestDetail: React.FC = () => {
                 <label className="text-xs text-gray-500">Start Date</label>
                 <div className="flex items-center gap-2 mt-1">
                   <Calendar size={16} className="text-gray-400" />
-                  <p className="text-sm text-gray-900">{request.startDate}</p>
+                  <p className="text-sm text-gray-900">{request.startDate || "-"}</p>
                 </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500">End Date</label>
                 <div className="flex items-center gap-2 mt-1">
                   <Calendar size={16} className="text-gray-400" />
-                  <p className="text-sm text-gray-900">{request.endDate}</p>
+                  <p className="text-sm text-gray-900">{request.endDate || "-"}</p>
                 </div>
               </div>
               <div>
@@ -232,20 +290,33 @@ export const ServiceRequestDetail: React.FC = () => {
                 <p className="text-sm text-gray-900 mt-1">{contractId}</p>
               </div>
 
-              {/* Contracts milestone later: enable link when contracts are connected */}
               <Link to={`/contracts/${contractId}`} className="block text-sm text-blue-600 hover:text-blue-700 mt-2">
                 View Contract Details →
               </Link>
             </div>
           </div>
 
+          {/* Action Panel */}
           {request.status === "Open" && (
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <h2 className="text-sm text-gray-900 mb-4">Actions</h2>
 
+              {!canCreateOffer && (
+                <div className="text-sm text-red-600 mb-3">
+                  {isDeadlineExpired
+                    ? "Offer deadline has passed. You can no longer submit offers for this request."
+                    : "Offers are not available right now."}
+                </div>
+              )}
+
               <Link
-                to={`/service-offers/create?requestId=${request.id}`}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                to={canCreateOffer ? `/service-offers/create?requestId=${request.id}` : "#"}
+                onClick={(e) => {
+                  if (!canCreateOffer) e.preventDefault();
+                }}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors ${
+                  canCreateOffer ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                }`}
               >
                 <Plus size={20} />
                 Create Service Offer

@@ -1,0 +1,55 @@
+user_id,provider_id,name,email,role,status,created_at,material_number,experience_level,technology_level,performance_grade,average_daily_rate,skills,availability,service_requests_completed,service_orders_active,is_active,is_staff
+SP1001,P001,Nina Becker,nina.becker@rheintech.de,Specialist,Active,2024-12-05,MAT-P001-0001,Junior,Intermediate,B,443.00,Cypress | JUnit | Snowflake | Test Automation | Test Design,Available,1,0,True,False
+SP1002,P001,Andreas Neumann,andreas.neumann@rheintech.de,Specialist,Active,2024-04-11,MAT-P001-0002,Junior,Intermediate,C,469.00,MS Project | Prince2 | Risk Mgmt | Scrum | Spring,Partially Booked,4,1,True,False
+SP1003,P001,Jonas Bauer,jonas.bauer@rheintech.de,Specialist,Active,2024-06-30,MAT-P001-0003,Mid,Advanced,A,654.00,S/4HANA | SAP FI | SAP MM | SAP SD | Spring,Partially Booked,1,1,True,False
+SP1004,P001,Tim Koch,tim.koch@rheintech.de,Specialist,Active,2023-03-07,MAT-P001-0004,Junior,Intermediate,C,476.00,Kafka | S/4HANA | SAP FI | SAP MM | SAP SD,Partially Booked,3,1,True,False
+SP1005,P001,Lea Lange,lea.lange@rheintech.de,Specialist,Active,2023-10-20,MAT-P001-0005,Senior,Expert,A,947.00,Design Systems | Figma | Prototyping | React | Spring | User Research,Partially Booked,1,1,True,False
+SP1006,P001,Eva Lange,eva.lange@rheintech.de,Specialist,Active,2023-08-13,MAT-P001-0006,Mid,Advanced,B,616.00,AWS | Azure | Data Modelling | Power BI | Python | React | SQL,Partially Booked,3,1,True,False
+SP1007,P001,Jan Weber,jan.weber@rheintech.de,Specialist,Active,2024-06-30,MAT-P001-0007,Mid,Advanced,B,701.00,AWS | FastAPI | ITIL | MS Office | Requirements | Stakeholder Mgmt | TypeScript,Available,1,0,True,False
+SP1008,P001,Lukas Hoffmann,lukas.hoffmann@rheintech.de,Specialist,Active,2024-02-12,MAT-P001-0008,Mid,Advanced,A,689.00,Databricks | MS Project | Prince2 | Risk Mgmt | Scrum | Spring | TypeScript,Available,0,0,True,False
+SP1009,P001,Jan Klein,jan.klein@rheintech.de,Specialist,Active,2024-05-08,MAT-P001-0009,Mid,Intermediate,B,772.00,Azure | IAM | ISO 27001 | SIEM | Threat Modelling,Partially Booked,0,1,True,False
+SP1010,P001,Daniel Weber,daniel.weber@rheintech.de,Specialist,Active,2025-05-16,MAT-P001-0010,Expert,Expert,A,1118.00,Databricks | Design Systems | Figma | GCP | Prototyping | TypeScript | User Research,Available,0,0,True,False
+SP2001,P002,Mia Müller,mia.mueller@nordcloud-consulting.de,Specialist,Active,2025-09-21,MAT-P002-0001,Junior,Basic,C,438.00,API Design | Databricks | Django | PostgreSQL | Python,Partially Booked,1,1,True,False
+SP2002,P002,Marie Braun,marie.braun@nordcloud-consulting.de,Specialist,Active,2025-08-14,MAT-P002-0002,Senior,Advanced,A,804.00,Cypress | FastAPI | JUnit | Tableau | Test Automation | Test Design,Available,0,0,True,False
+SP2003,P002,Lena Neumann,lena.neumann@nordcloud-consulting.de,Specialist,Active,2024-01-11,MAT-P002-0003,Senior,Advanced,A,829.00,CI/CD | Docker | GCP | Kubernetes | React | Tableau | Terraform,Partially Booked,0,1,True,False
+SP2004,P002,David Hartmann,david.hartmann@nordcloud-consulting.de,Specialist,Active,2024-03-13,MAT-P002-0004,Junior,Basic,B,480.00,Data Modelling | FastAPI | Power BI | Python | React | SQL,Available,1,0,True,False
+SP2005,P002,Anna Neumann,anna.neumann@nordcloud-consulting.de,Specialist,Active,2024-01-24,MAT-P002-0005,Mid,Advanced,B,668.00,API Design | Django | FastAPI | GCP | PostgreSQL | Python | React,Available,2,0,True,False
+SP2006,P002,Eva Klein,eva.klein@nordcloud-consulting.de,Specialist,Active,2023-05-21,MAT-P002-0006,Junior,Intermediate,B,434.00,API Design | Django | GCP | PostgreSQL | Python,Available,2,0,True,False
+SP2007,P002,Thomas Lange,thomas.lange@nordcloud-consulting.de,Specialist,Active,2024-02-23,MAT-P002-0007,Junior,Basic,B,527.00,AWS | Azure | Databricks | Networking | Security | Snowflake | TypeScript,Available,0,0,True,False
+SP2008,P002,Jonas Becker,jonas.becker@nordcloud-consulting.de,Specialist,Active,2023-07-24,MAT-P002-0008,Senior,Expert,B,860.00,MS Project | Prince2 | React | Risk Mgmt | Scrum,Available,1,0,True,False
+SP2009,P002,Hannah Wolf,hannah.wolf@nordcloud-consulting.de,Specialist,Active,2025-12-19,MAT-P002-0009,Expert,Expert,A,1022.00,Data Modelling | Databricks | Power BI | Python | SQL | TypeScript,Fully Booked,0,2,True,False
+SP2010,P002,Thomas Becker,thomas.becker@nordcloud-consulting.de,Specialist,Active,2024-06-24,MAT-P002-0010,Mid,Intermediate,A,629.00,FastAPI | IAM | ISO 27001 | Kafka | SIEM | Snowflake | Threat Modelling,Available,1,0,True,False
+SP2011,P002,Katharina Schwarz,katharina.schwarz@nordcloud-consulting.de,Specialist,Active,2025-05-25,MAT-P002-0011,Senior,Advanced,A,865.00,Data Modelling | Databricks | GCP | Power BI | Python | React | SQL,Available,0,0,True,False
+SP2012,P002,Tim Müller,tim.mueller@nordcloud-consulting.de,Specialist,Active,2025-01-02,MAT-P002-0012,Senior,Advanced,B,812.00,Azure | ITIL | MS Office | Requirements | Snowflake | Stakeholder Mgmt,Available,0,0,True,False
+SP2013,P002,Felix Hartmann,felix.hartmann@nordcloud-consulting.de,Specialist,Active,2025-04-24,MAT-P002-0013,Expert,Expert,A,1186.00,CI/CD | Docker | GCP | Kubernetes | Terraform,Available,0,0,True,False
+SP2014,P002,Nina Hoffmann,nina.hoffmann@nordcloud-consulting.de,Specialist,Active,2025-07-31,MAT-P002-0014,Senior,Advanced,B,789.00,Design Systems | Figma | Kafka | Prototyping | User Research,Partially Booked,0,1,True,False
+SP2015,P002,Sarah Schäfer,sarah.schaefer@nordcloud-consulting.de,Specialist,Active,2025-03-29,MAT-P002-0015,Mid,Advanced,A,757.00,IAM | ISO 27001 | SIEM | Spring | Threat Modelling | TypeScript,Available,1,0,True,False
+SP3001,P003,Nina Müller,nina.mueller@bavaria-digital.de,Specialist,Active,2024-11-07,MAT-P003-0001,Senior,Advanced,A,873.00,Cypress | JUnit | Spring | Test Automation | Test Design,Available,1,0,True,False
+SP3002,P003,Sarah Schwarz,sarah.schwarz@bavaria-digital.de,Specialist,Active,2024-09-08,MAT-P003-0002,Mid,Advanced,A,609.00,Cypress | GCP | JUnit | Spring | Tableau | Test Automation | Test Design,Available,0,0,True,False
+SP3003,P003,Lea Schwarz,lea.schwarz@bavaria-digital.de,Specialist,Active,2023-12-14,MAT-P003-0003,Senior,Expert,B,893.00,Design Systems | Figma | Kafka | Prototyping | React | TypeScript | User Research,Available,1,0,True,False
+SP3004,P003,Mia Koch,mia.koch@bavaria-digital.de,Specialist,Active,2025-08-31,MAT-P003-0004,Senior,Advanced,A,817.00,ITIL | Kafka | MS Office | Requirements | Stakeholder Mgmt,Available,2,0,True,False
+SP3005,P003,Lea Neumann,lea.neumann@bavaria-digital.de,Specialist,Active,2024-03-24,MAT-P003-0005,Mid,Intermediate,A,727.00,ITIL | MS Office | Requirements | Stakeholder Mgmt | Tableau,Available,1,0,True,False
+SP3006,P003,Andreas Wagner,andreas.wagner@bavaria-digital.de,Specialist,Active,2025-07-02,MAT-P003-0006,Mid,Advanced,B,753.00,Design Systems | FastAPI | Figma | Prototyping | Tableau | TypeScript | User Research,Available,0,0,True,False
+SP3007,P003,Clara Koch,clara.koch@bavaria-digital.de,Specialist,Active,2024-08-08,MAT-P003-0007,Senior,Expert,B,940.00,AWS | CI/CD | Docker | Kubernetes | React | Terraform,Available,2,0,True,False
+SP3008,P003,Hannah Becker,hannah.becker@bavaria-digital.de,Specialist,Active,2025-08-12,MAT-P003-0008,Junior,Basic,B,436.00,Cypress | JUnit | Snowflake | Test Automation | Test Design | TypeScript,Partially Booked,1,1,True,False
+SP3009,P003,Johanna Schmidt,johanna.schmidt@bavaria-digital.de,Specialist,Active,2024-03-27,MAT-P003-0009,Senior,Expert,B,781.00,FastAPI | S/4HANA | SAP FI | SAP MM | SAP SD | Tableau,Available,0,0,True,False
+SP3010,P003,Max Neumann,max.neumann@bavaria-digital.de,Specialist,Active,2023-02-25,MAT-P003-0010,Senior,Expert,A,939.00,API Design | Django | PostgreSQL | Python | Tableau,Available,0,0,True,False
+SP3011,P003,Sophia Müller,sophia.mueller@bavaria-digital.de,Specialist,Active,2025-05-13,MAT-P003-0011,Mid,Advanced,A,676.00,Databricks | S/4HANA | SAP FI | SAP MM | SAP SD | Tableau,Available,0,0,True,False
+SP3012,P003,Eva Hartmann,eva.hartmann@bavaria-digital.de,Specialist,Active,2024-02-13,MAT-P003-0012,Junior,Intermediate,B,437.00,ITIL | Kafka | MS Office | Requirements | Stakeholder Mgmt,Available,1,0,True,False
+SP3013,P003,Leon Wagner,leon.wagner@bavaria-digital.de,Specialist,Active,2023-08-23,MAT-P003-0013,Mid,Intermediate,B,739.00,GCP | IAM | ISO 27001 | Java | SIEM | Threat Modelling,Available,0,0,True,False
+SP3014,P003,Moritz Schmidt,moritz.schmidt@bavaria-digital.de,Specialist,Active,2024-05-12,MAT-P003-0014,Expert,Expert,A,1191.00,CI/CD | Docker | Java | Kubernetes | Terraform,Available,0,0,True,False
+SP3015,P003,David Lange,david.lange@bavaria-digital.de,Specialist,Active,2024-11-29,MAT-P003-0015,Senior,Expert,B,949.00,S/4HANA | SAP FI | SAP MM | SAP SD | TypeScript,Available,0,0,True,False
+SP3016,P003,Lukas Wolf,lukas.wolf@bavaria-digital.de,Specialist,Active,2025-09-17,MAT-P003-0016,Senior,Expert,A,891.00,Data Modelling | Databricks | Power BI | Python | SQL | Spring | TypeScript,Partially Booked,0,1,True,False
+SP3017,P003,Nina Zimmermann,nina.zimmermann@bavaria-digital.de,Specialist,Active,2025-09-25,MAT-P003-0017,Junior,Intermediate,C,506.00,GCP | ITIL | MS Office | Requirements | Snowflake | Stakeholder Mgmt,Available,0,0,True,False
+SP3018,P003,Thomas Schmitt,thomas.schmitt@bavaria-digital.de,Specialist,Active,2025-04-12,MAT-P003-0018,Senior,Expert,A,912.00,CI/CD | Docker | Kafka | Kubernetes | Terraform,Available,0,0,True,False
+SP3019,P003,Noah Schmidt,noah.schmidt@bavaria-digital.de,Specialist,Active,2025-12-23,MAT-P003-0019,Junior,Basic,C,482.00,IAM | ISO 27001 | Java | React | SIEM | Snowflake | Threat Modelling,Available,1,0,True,False
+SP3020,P003,Nina Richter,nina.richter@bavaria-digital.de,Specialist,Active,2024-03-19,MAT-P003-0020,Mid,Intermediate,A,640.00,GCP | Kafka | MS Project | Prince2 | Risk Mgmt | Scrum | TypeScript,Available,0,0,True,False
+U101,P001,Lea Koch,lea.koch@rheintech.de,Provider Admin,Active,2025-10-31,,,,,,,,,,True,True
+U102,P001,Johanna Hartmann,johanna.hartmann@rheintech.de,Supplier Representative,Active,2025-05-09,,,,,,,,,,True,False
+U103,P001,David Schmidt,david.schmidt@rheintech.de,Contract Coordinator,Active,2023-11-23,,,,,,,,,,True,False
+U201,P002,Jonas Wolf,jonas.wolf@nordcloud-consulting.de,Provider Admin,Active,2025-06-16,,,,,,,,,,True,True
+U202,P002,Laura Koch,laura.koch@nordcloud-consulting.de,Supplier Representative,Active,2024-04-05,,,,,,,,,,True,False
+U203,P002,Moritz Hartmann,moritz.hartmann@nordcloud-consulting.de,Contract Coordinator,Active,2024-04-16,,,,,,,,,,True,False
+U301,P003,Laura Bauer,laura.bauer@bavaria-digital.de,Provider Admin,Active,2024-01-01,,,,,,,,,,True,True
+U302,P003,Laura Schmitt,laura.schmitt@bavaria-digital.de,Supplier Representative,Active,2025-06-08,,,,,,,,,,True,False
+U303,P003,Jan Krüger,jan.krueger@bavaria-digital.de,Contract Coordinator,Active,2023-08-25,,,,,,,,,,True,False

@@ -1,0 +1,7 @@
+contract_id,provider_id,awarded_at,created_by_system,note
+C001,P001,2026-01-15T14:57:30.567315+00:00,True,Award granted after evaluation of functionality and commercial conditions.
+C002,P001,2026-01-15T14:57:30.577029+00:00,True,Award granted as part of the multi-year agreement.
+C003,P002,2026-01-15T14:57:30.583999+00:00,True,Award granted after evaluation of functionality and commercial conditions.
+C004,P002,2026-01-15T14:57:30.592799+00:00,True,Award granted as part of the multi-year agreement.
+C005,P003,2026-01-15T14:57:30.599337+00:00,True,Award granted after evaluation of functionality and commercial conditions.
+C006,P003,2026-01-15T14:57:30.608950+00:00,True,Award granted as part of the multi-year agreement.

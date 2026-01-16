@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     ServiceRequestListView,
     ServiceRequestDetailView,
+    Group3ServiceRequestCreateView,
     ServiceOfferListCreateView,
     ServiceOfferDetailView,
     ServiceOfferStatusUpdateView,
@@ -19,6 +20,9 @@ urlpatterns = [
     # provider portal
     path("service-requests/", ServiceRequestListView.as_view()),
     path("service-requests/<str:id>/", ServiceRequestDetailView.as_view(), name="service-requests-detail"),
+
+    # group3 api-key: create SR (Milestone 5)
+    path("group3/service-requests/", Group3ServiceRequestCreateView.as_view(), name="group3-create-sr"),
 
     path("service-offers/", ServiceOfferListCreateView.as_view(), name="service-offers-list-create"),
     path("service-offers/<int:id>/", ServiceOfferDetailView.as_view(), name="service-offers-detail"),
