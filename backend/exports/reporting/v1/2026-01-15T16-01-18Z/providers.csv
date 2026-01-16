@@ -1,0 +1,4 @@
+provider_id,name,contact_name,contact_email,contact_phone,address,email_notifications,sms_notifications,preferred_language,status,created_at
+P001,RheinTech Solutions GmbH,Anna Schmidt,kontakt@rheintech.de,+49 69 3201 4450,"Mainzer Landstraße 46, 60325 Frankfurt am Main, Deutschland",True,False,German,Active,2022-11-04
+P002,NordCloud Consulting AG,Michael Berg,info@nordcloud-consulting.de,+49 40 8899 1200,"Spitalerstraße 10, 20095 Hamburg, Deutschland",True,False,German,Active,2023-02-20
+P003,Bavaria Digital Services GmbH,Katharina Weber,service@bavaria-digital.de,+49 89 7788 3300,"Leopoldstraße 45, 80802 München, Deutschland",True,True,German,Active,2023-06-12

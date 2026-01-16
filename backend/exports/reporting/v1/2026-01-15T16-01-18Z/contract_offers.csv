@@ -1,0 +1,7 @@
+contract_offer_id,contract_id,provider_id,created_by_user_id,status,proposed_daily_rate,proposed_terms,note,submitted_at,created_at
+1,C007,P001,U101,Submitted,875.00,Net payment term 30 days. Travel expenses at cost. Monthly reporting.,Offer submitted according to the tender documents.,2025-10-05T15:45:00+00:00,2026-01-15T14:57:30.623276+00:00
+2,C007,P002,U201,Submitted,900.00,Net payment term 30 days. Travel expenses at cost. Monthly reporting.,Offer submitted according to the tender documents.,2025-10-08T11:45:00+00:00,2026-01-15T14:57:30.631924+00:00
+3,C007,P003,U301,Submitted,892.00,Net payment term 30 days. Travel expenses at cost. Monthly reporting.,Offer submitted according to the tender documents.,2025-10-02T13:45:00+00:00,2026-01-15T14:57:30.637818+00:00
+4,C008,P001,U101,Submitted,871.00,Net payment term 30 days. Travel expenses at cost. Monthly reporting.,Offer submitted according to the tender documents.,2025-12-28T18:45:00+00:00,2026-01-15T14:57:30.643555+00:00
+5,C008,P002,U201,Submitted,727.00,Net payment term 30 days. Travel expenses at cost. Monthly reporting.,Offer submitted according to the tender documents.,2026-01-01T09:30:00+00:00,2026-01-15T14:57:30.649777+00:00
+6,C008,P003,U301,Submitted,980.00,Net payment term 30 days. Travel expenses at cost. Monthly reporting.,Offer submitted according to the tender documents.,2026-01-03T16:30:00+00:00,2026-01-15T14:57:30.655967+00:00
