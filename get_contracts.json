@@ -1,0 +1,215 @@
+[
+    {
+        "contractId": "C001",
+        "title": "Software Development Services 2024",
+        "kind": "SERVICE",
+        "status": "PUBLISHED",
+        "publishingDate": "2026-01-11",
+        "offerDeadlineAt": "2026-01-20T23:59:59Z",
+        "stakeholders": {
+            "procurementManager": "Max Mustermann",
+            "legalCounsel": "Dr. Jane Doe",
+            "contractAdministrator": "Anna Schmidt"
+        },
+        "scopeOfWork": "High-level scope text ...",
+        "termsAndConditions": "T&C text ...",
+        "weighting": {
+            "functional": 60,
+            "commercial": 40
+        },
+        "allowedConfiguration": {
+            "domains": [
+                "Web Development",
+                "Cloud Services",
+                "DevOps"
+            ],
+            "roles": [
+                "Full Stack Developer",
+                "Backend Developer",
+                "Frontend Developer",
+                "DevOps Engineer"
+            ],
+            "experienceLevels": [
+                "Junior",
+                "Mid",
+                "Senior",
+                "Expert"
+            ],
+            "technologyLevels": [
+                "Basic",
+                "Intermediate",
+                "Advanced",
+                "Expert"
+            ],
+            "acceptedServiceRequestTypes": [
+                {
+                    "type": "SINGLE",
+                    "isAccepted": true,
+                    "biddingDeadlineDays": 7,
+                    "offerCycles": 2
+                },
+                {
+                    "type": "MULTI",
+                    "isAccepted": true,
+                    "biddingDeadlineDays": 10,
+                    "offerCycles": 2
+                },
+                {
+                    "type": "TEAM",
+                    "isAccepted": true,
+                    "biddingDeadlineDays": 14,
+                    "offerCycles": 2
+                },
+                {
+                    "type": "WORK_CONTRACT",
+                    "isAccepted": true,
+                    "biddingDeadlineDays": 21,
+                    "offerCycles": 1
+                }
+            ],
+            "pricingRules": {
+                "currency": "EUR",
+                "maxDailyRates": [
+                    {
+                        "role": "Junior Developer",
+                        "experienceLevel": "Junior",
+                        "technologyLevel": "Basic",
+                        "maxDailyRate": 500
+                    },
+                    {
+                        "role": "Mid Developer",
+                        "experienceLevel": "Mid",
+                        "technologyLevel": "Intermediate",
+                        "maxDailyRate": 700
+                    },
+                    {
+                        "role": "Senior Developer",
+                        "experienceLevel": "Senior",
+                        "technologyLevel": "Advanced",
+                        "maxDailyRate": 900
+                    },
+                    {
+                        "role": "Expert Developer",
+                        "experienceLevel": "Expert",
+                        "technologyLevel": "Expert",
+                        "maxDailyRate": 1000
+                    }
+                ]
+            }
+        },
+        "versionsAndDocuments": [
+            {
+                "version": 1,
+                "versionDate": "2024-01-01",
+                "status": "SIGNED",
+                "changeSummary": "Initial contract version",
+                "documents": [
+                    {
+                        "name": "Contract_v1.pdf",
+                        "type": "PDF",
+                        "url": "https://group2.example/documents/C001/v1.pdf",
+                        "sha256": "optional-hash"
+                    }
+                ]
+            },
+            {
+                "version": 2,
+                "versionDate": "2024-08-15",
+                "status": "SIGNED",
+                "changeSummary": "Updated pricing limits and tech level requirements",
+                "documents": [
+                    {
+                        "name": "Contract_v2.pdf",
+                        "type": "PDF",
+                        "url": "https://group2.example/documents/C001/v2.pdf"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "contractId": "C003",
+        "title": "Web Application Development Framework Agreement",
+        "kind": "SERVICE",
+        "status": "DRAFT",
+        "publishingDate": "2026-03-05",
+        "offerDeadlineAt": "2026-03-25T23:59:59Z",
+        "stakeholders": {
+            "procurementManager": "Stefan Wagner",
+            "legalCounsel": "Dr. Elisa König",
+            "contractAdministrator": "Maria Hoffmann"
+        },
+        "scopeOfWork": "Frontend and backend development of enterprise web applications using modern frameworks.",
+        "termsAndConditions": "Framework agreement T&C including IP and data protection clauses.",
+        "weighting": {
+            "functional": 50,
+            "commercial": 50
+        },
+        "allowedConfiguration": {
+            "domains": [
+                "Web Development"
+            ],
+            "roles": [
+                "Frontend Developer",
+                "Backend Developer",
+                "Full Stack Developer"
+            ],
+            "experienceLevels": [
+                "Junior",
+                "Mid",
+                "Senior"
+            ],
+            "technologyLevels": [
+                "Basic",
+                "Intermediate",
+                "Advanced"
+            ],
+            "acceptedServiceRequestTypes": [
+                {
+                    "type": "SINGLE",
+                    "isAccepted": true,
+                    "biddingDeadlineDays": 7,
+                    "offerCycles": 3
+                },
+                {
+                    "type": "MULTI",
+                    "isAccepted": true,
+                    "biddingDeadlineDays": 10,
+                    "offerCycles": 2
+                }
+            ],
+            "pricingRules": {
+                "currency": "EUR",
+                "maxDailyRates": [
+                    {
+                        "role": "Frontend Developer",
+                        "experienceLevel": "Junior",
+                        "technologyLevel": "Basic",
+                        "maxDailyRate": 450
+                    },
+                    {
+                        "role": "Full Stack Developer",
+                        "experienceLevel": "Senior",
+                        "technologyLevel": "Advanced",
+                        "maxDailyRate": 880
+                    }
+                ]
+            }
+        },
+        "versionsAndDocuments": [
+            {
+                "version": 1,
+                "versionDate": "2026-03-05",
+                "status": "DRAFT",
+                "changeSummary": "Initial draft for internal review",
+                "documents": [
+                    {
+                        "name": "Web_Framework_Contract_v1_draft.pdf",
+                        "type": "PDF",
+                        "url": "https://group2.example/documents/C003/v1-draft.pdf"
+                    }
+                ]
+            }
+        ]
+    }
+]

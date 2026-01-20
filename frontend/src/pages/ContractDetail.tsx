@@ -10,36 +10,15 @@ import {
   History,
   BookOpen,
   File,
-  Plus,
   Building,
 } from "lucide-react";
 
 import { StatusBadge } from "../components/StatusBadge";
-import OfferStatusBadge from "../components/OfferStatusBadge";
-import ContractOfferForm from "../components/ContractOfferForm";
-
 import { useApp } from "../context/AppContext";
-import {
-  getContractById,
-  getMyContractOffers,
-  createContractOffer,
-} from "../api/contracts";
-import type {
-  Contract,
-  ContractOffer,
-  CreateContractOfferPayload,
-  PricingLimit,
-  OfferCycle,
-  VersionHistoryItem,
-} from "../api/contracts";
+import { getContractById } from "../api/contracts";
+import type { Contract } from "../types";
 
-type TabKey =
-  | "overview"
-  | "governance"
-  | "configuration"
-  | "pricing"
-  | "versions"
-  | "offers";
+type TabKey = "overview" | "governance" | "configuration" | "pricing" | "versions";
 
 function safeArray<T>(v: T[] | null | undefined): T[] {
   return Array.isArray(v) ? v : [];
@@ -48,7 +27,6 @@ function safeArray<T>(v: T[] | null | undefined): T[] {
 function safeDateLabel(v?: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
-  // if backend sends ISO date-only, this is still fine
   return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
 }
 
@@ -68,29 +46,17 @@ function toNumber(v: unknown, fallback = 0): number {
 }
 
 export const ContractDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>(); // contractId in URL
   const navigate = useNavigate();
 
-  const { tokens, currentUser, currentProvider } = useApp();
+  const { tokens, currentProvider } = useApp();
   const access = tokens?.access || "";
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
-
   const [contract, setContract] = useState<Contract | null>(null);
-  const [offers, setOffers] = useState<ContractOffer[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
-
-  const [showOfferForm, setShowOfferForm] = useState(false);
-
-  const canSubmitOffer =
-    currentUser?.role === "Provider Admin" ||
-    currentUser?.role === "Contract Coordinator" ||
-    currentUser?.role === "Supplier Representative";
-
-  const canOfferNow =
-    contract?.status === "Published" || contract?.status === "In Negotiation";
 
   const refresh = async () => {
     if (!access || !id) return;
@@ -100,14 +66,9 @@ export const ContractDetail: React.FC = () => {
     try {
       const c = await getContractById(access, id);
       setContract(c);
-
-      // Only fetch offers if user has provider context (should always exist for provider portal)
-      const myOffers = await getMyContractOffers(access, id);
-      setOffers(myOffers);
     } catch (e: any) {
       setError(e?.message || "Failed to load contract");
       setContract(null);
-      setOffers([]);
     } finally {
       setLoading(false);
     }
@@ -118,24 +79,25 @@ export const ContractDetail: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, id]);
 
+  const cfg = contract?.allowedConfiguration || null;
+
+  const acceptedTypes = useMemo(() => {
+    const arr = safeArray(cfg?.acceptedServiceRequestTypes);
+    return arr.filter((x: any) => x?.isAccepted);
+  }, [cfg?.acceptedServiceRequestTypes]);
+
+  const pricingRows = useMemo(() => {
+    return safeArray(cfg?.pricingRules?.maxDailyRates);
+  }, [cfg?.pricingRules?.maxDailyRates]);
+
+  // Versions/documents structure can vary; we show best-effort
+  const versions = useMemo(() => safeArray<any>(contract?.versionsAndDocuments), [contract?.versionsAndDocuments]);
+
   const latestVersion = useMemo(() => {
-    const vh = safeArray(contract?.versionHistory as VersionHistoryItem[] | undefined);
-    if (!vh.length) return null;
-    return vh[vh.length - 1];
-  }, [contract]);
-
-  const latestOffer = useMemo(() => {
-    if (!offers.length) return null;
-    return [...offers].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))[0];
-  }, [offers]);
-
-  const submitOffer = async (payload: CreateContractOfferPayload) => {
-    if (!access || !id) return;
-    await createContractOffer(access, id, payload);
-    setShowOfferForm(false);
-    await refresh();
-    setActiveTab("offers");
-  };
+    if (!versions.length) return null;
+    // assume last element is latest; if not, it's still fine for demo
+    return versions[versions.length - 1];
+  }, [versions]);
 
   if (loading) {
     return (
@@ -161,26 +123,8 @@ export const ContractDetail: React.FC = () => {
     );
   }
 
-  const awardedToMe =
-    !!contract.awardedProviderId &&
-    contract.awardedProviderId === currentProvider?.id;
-
-  const acceptedRequestTypes = safeArray(contract.acceptedRequestTypes);
-  const allowedDomains = safeArray(contract.allowedDomains);
-  const allowedRoles = safeArray(contract.allowedRoles);
-  const experienceLevels = safeArray(contract.experienceLevels);
-
-  const offerCyclesAndDeadlines = safeArray(
-    contract.offerCyclesAndDeadlines as OfferCycle[] | undefined
-  );
-
-  const pricingLimits = safeArray(
-    contract.pricingLimits as PricingLimit[] | undefined
-  );
-
-  const versionHistory = safeArray(
-    contract.versionHistory as VersionHistoryItem[] | undefined
-  );
+  const awardedToMe = Boolean(contract.isAwardedToMyProvider);
+  const myAwardStatus = contract.myProviderStatus?.status || null;
 
   return (
     <div className="p-8">
@@ -198,9 +142,9 @@ export const ContractDetail: React.FC = () => {
           <div>
             <h1 className="text-2xl text-gray-900">{contract.title}</h1>
             <p className="text-gray-500 mt-1">
-              {contract.id}
+              {contract.contractId}
               {contract.kind ? ` • ${contract.kind}` : ""}
-              {contract.awardedProviderId ? ` • Awarded: ${contract.awardedProviderId}` : ""}
+              {currentProvider?.id ? ` • Provider: ${currentProvider.id}` : ""}
             </p>
           </div>
           <StatusBadge status={contract.status} />
@@ -211,31 +155,20 @@ export const ContractDetail: React.FC = () => {
       <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mb-6">
         <p className="text-sm text-blue-900">
           <strong>Note:</strong> All contract information is read-only within the Provider Management System.
-          Contracts are published and awarded by Contract Management (Group 2). Providers negotiate by submitting offers.
+          Contracts are published and awarded by Contract Management (Group 2).
         </p>
       </div>
 
-      {/* Award banner */}
-      {contract.awardedProviderId && (
-        <div
-          className={`rounded-lg border p-4 mb-6 ${
-            awardedToMe
-              ? "bg-green-50 border-green-200"
-              : "bg-yellow-50 border-yellow-200"
-          }`}
-        >
-          <p
-            className={`text-sm ${
-              awardedToMe ? "text-green-900" : "text-yellow-900"
-            }`}
-          >
-            <strong>Award:</strong> This contract is awarded to{" "}
-            <strong>{contract.awardedProviderId}</strong>
-            {awardedToMe ? " (your provider)" : ""}.
+      {/* Award banner (isolation-safe) */}
+      {contract.isAwardedToMyProvider && (
+        <div className="rounded-lg border p-4 mb-6 bg-green-50 border-green-200">
+          <p className="text-sm text-green-900">
+            <strong>Award:</strong> This contract is awarded to <strong>your provider</strong>
+            {myAwardStatus ? ` (${myAwardStatus})` : ""}.
           </p>
-          {awardedToMe && contract.status === "Active" && (
+          {contract.status === "ACTIVE" && (
             <p className="text-xs text-green-700 mt-1">
-              Service Requests under this contract will be visible to your provider.
+              Service Requests under this contract should be visible to your provider (if Group3 provides SRs for this contract).
             </p>
           )}
         </div>
@@ -313,28 +246,13 @@ export const ContractDetail: React.FC = () => {
               <span>Versions & Documents</span>
             </div>
           </button>
-
-          {/* ✅ Offers tab (keep from your API version) */}
-          <button
-            onClick={() => setActiveTab("offers")}
-            className={`pb-4 px-1 border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === "offers"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <History size={18} />
-              <span>Offers</span>
-            </div>
-          </button>
         </div>
       </div>
 
       {/* Content */}
       {activeTab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Main Details */}
+          {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
             {/* Timeline */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -345,7 +263,7 @@ export const ContractDetail: React.FC = () => {
                   <label className="text-xs text-gray-500">Publishing Date</label>
                   <div className="flex items-center gap-2 mt-1">
                     <Calendar size={16} className="text-gray-400" />
-                    <p className="text-sm text-gray-900">{safeDateLabel(contract.publishedAt)}</p>
+                    <p className="text-sm text-gray-900">{safeDateLabel(contract.publishingDate)}</p>
                   </div>
                 </div>
 
@@ -353,24 +271,22 @@ export const ContractDetail: React.FC = () => {
                   <label className="text-xs text-gray-500">Offer Deadline</label>
                   <div className="flex items-center gap-2 mt-1">
                     <Calendar size={16} className="text-gray-400" />
-                    <p className="text-sm text-gray-900">{safeDateLabel(contract.offerDeadline)}</p>
+                    <p className="text-sm text-gray-900">{safeDateLabel(contract.offerDeadlineAt)}</p>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500">Start Date</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Calendar size={16} className="text-gray-400" />
-                    <p className="text-sm text-gray-900">{contract.startDate || "—"}</p>
-                  </div>
+                  <label className="text-xs text-gray-500">My Award Status</label>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {awardedToMe ? (myAwardStatus || "AWARDED") : "Not awarded to my provider"}
+                  </p>
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500">End Date</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Calendar size={16} className="text-gray-400" />
-                    <p className="text-sm text-gray-900">{contract.endDate || "—"}</p>
-                  </div>
+                  <label className="text-xs text-gray-500">Current Version</label>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {latestVersion?.version ? `v${latestVersion.version}` : "—"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -382,7 +298,7 @@ export const ContractDetail: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-gray-500">Contract ID</label>
-                  <p className="text-sm text-gray-900 mt-1">{contract.id}</p>
+                  <p className="text-sm text-gray-900 mt-1">{contract.contractId}</p>
                 </div>
 
                 <div>
@@ -395,30 +311,28 @@ export const ContractDetail: React.FC = () => {
                 <div>
                   <label className="text-xs text-gray-500">Duration</label>
                   <p className="text-sm text-gray-900 mt-1">
-                    {monthsBetween(contract.startDate, contract.endDate)}
+                    {monthsBetween(contract.publishingDate || null, contract.offerDeadlineAt || null)}
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500">Current Version</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {latestVersion ? `v${latestVersion.version}` : "—"}
-                  </p>
+                  <label className="text-xs text-gray-500">Accepted SR Types</label>
+                  <p className="text-sm text-gray-900 mt-1">{acceptedTypes.length}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column - Status Info */}
+          {/* Right Column */}
           <div className="space-y-6">
-            {contract.status === "Active" && (
+            {contract.status === "ACTIVE" && (
               <div className="bg-green-50 rounded-lg border border-green-200 p-4">
                 <div className="flex items-start gap-3">
                   <Settings size={20} className="text-green-600 mt-0.5" />
                   <div>
                     <p className="text-sm text-green-900">Active Contract</p>
                     <p className="text-xs text-green-700 mt-1">
-                      This contract is currently active and accepting service requests.
+                      This contract is currently active.
                     </p>
                   </div>
                 </div>
@@ -441,46 +355,45 @@ export const ContractDetail: React.FC = () => {
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-gray-500">Request Types</label>
-                  <p className="text-sm text-gray-900 mt-1">{acceptedRequestTypes.length} types</p>
+                  <label className="text-xs text-gray-500">Domains</label>
+                  <p className="text-sm text-gray-900 mt-1">{safeArray(cfg?.domains).length}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Allowed Domains</label>
-                  <p className="text-sm text-gray-900 mt-1">{allowedDomains.length} domains</p>
+                  <label className="text-xs text-gray-500">Roles</label>
+                  <p className="text-sm text-gray-900 mt-1">{safeArray(cfg?.roles).length}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Allowed Roles</label>
-                  <p className="text-sm text-gray-900 mt-1">{allowedRoles.length} roles</p>
+                  <label className="text-xs text-gray-500">Experience Levels</label>
+                  <p className="text-sm text-gray-900 mt-1">{safeArray(cfg?.experienceLevels).length}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">Pricing Rules</label>
-                  <p className="text-sm text-gray-900 mt-1">{pricingLimits.length} configured</p>
+                  <label className="text-xs text-gray-500">Pricing Rows</label>
+                  <p className="text-sm text-gray-900 mt-1">{pricingRows.length}</p>
                 </div>
+              </div>
+
+              <div className="mt-4">
+                <Link to="/service-requests" className="text-sm text-blue-600 hover:text-blue-700">
+                  Go to Service Requests →
+                </Link>
               </div>
             </div>
-
-            {/* Latest offer (quick glance) */}
-            {latestOffer && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-sm text-gray-900 mb-3">Latest Offer</h3>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-900">Offer #{latestOffer.id}</div>
-                  <OfferStatusBadge status={latestOffer.status} />
-                </div>
-                <div className="text-xs text-gray-500 mt-2">
-                  Submitted:{" "}
-                  {latestOffer.submittedAt
-                    ? new Date(latestOffer.submittedAt).toLocaleString()
-                    : "—"}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
 
       {activeTab === "governance" && (
         <div className="space-y-6">
+          {/* Stakeholders */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg text-gray-900 mb-4">Stakeholders</h2>
+            <div className="text-sm text-gray-700 space-y-1">
+              <div>Procurement: {contract.stakeholders?.procurementManager || "—"}</div>
+              <div>Legal: {contract.stakeholders?.legalCounsel || "—"}</div>
+              <div>Administrator: {contract.stakeholders?.contractAdministrator || "—"}</div>
+            </div>
+          </div>
+
           {/* Scope of Work */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg text-gray-900 mb-4">Scope of Work</h2>
@@ -493,8 +406,7 @@ export const ContractDetail: React.FC = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg text-gray-900 mb-4">Terms and Conditions</h2>
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-              {contract.termsAndConditions ||
-                "Standard terms and conditions apply as per framework agreement."}
+              {contract.termsAndConditions || "—"}
             </p>
           </div>
 
@@ -508,10 +420,10 @@ export const ContractDetail: React.FC = () => {
                   <div className="flex-1 bg-gray-200 rounded-full h-3">
                     <div
                       className="bg-blue-600 h-3 rounded-full"
-                      style={{ width: `${contract.functionalWeight ?? 50}%` }}
+                      style={{ width: `${contract.weighting?.functional ?? 50}%` }}
                     />
                   </div>
-                  <span className="text-sm text-gray-900">{contract.functionalWeight ?? 50}%</span>
+                  <span className="text-sm text-gray-900">{contract.weighting?.functional ?? 50}%</span>
                 </div>
               </div>
 
@@ -521,10 +433,10 @@ export const ContractDetail: React.FC = () => {
                   <div className="flex-1 bg-gray-200 rounded-full h-3">
                     <div
                       className="bg-green-600 h-3 rounded-full"
-                      style={{ width: `${contract.commercialWeight ?? 50}%` }}
+                      style={{ width: `${contract.weighting?.commercial ?? 50}%` }}
                     />
                   </div>
-                  <span className="text-sm text-gray-900">{contract.commercialWeight ?? 50}%</span>
+                  <span className="text-sm text-gray-900">{contract.weighting?.commercial ?? 50}%</span>
                 </div>
               </div>
             </div>
@@ -542,8 +454,8 @@ export const ContractDetail: React.FC = () => {
               <div>
                 <label className="text-sm text-gray-700 mb-3 block">Allowed Domains</label>
                 <div className="flex flex-wrap gap-2">
-                  {allowedDomains.length ? (
-                    allowedDomains.map((domain, index) => (
+                  {safeArray(cfg?.domains).length ? (
+                    safeArray(cfg?.domains).map((domain, index) => (
                       <span
                         key={index}
                         className="px-3 py-2 bg-green-50 text-green-700 rounded-lg text-sm border border-green-200"
@@ -560,8 +472,8 @@ export const ContractDetail: React.FC = () => {
               <div>
                 <label className="text-sm text-gray-700 mb-3 block">Allowed Roles</label>
                 <div className="flex flex-wrap gap-2">
-                  {allowedRoles.length ? (
-                    allowedRoles.map((role, index) => (
+                  {safeArray(cfg?.roles).length ? (
+                    safeArray(cfg?.roles).map((role, index) => (
                       <span
                         key={index}
                         className="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm border border-purple-200"
@@ -578,11 +490,29 @@ export const ContractDetail: React.FC = () => {
               <div>
                 <label className="text-sm text-gray-700 mb-3 block">Experience Levels</label>
                 <div className="flex flex-wrap gap-2">
-                  {experienceLevels.length ? (
-                    experienceLevels.map((level, index) => (
+                  {safeArray(cfg?.experienceLevels).length ? (
+                    safeArray(cfg?.experienceLevels).map((level, index) => (
                       <span
                         key={index}
                         className="px-3 py-2 bg-orange-50 text-orange-700 rounded-lg text-sm border border-orange-200"
+                      >
+                        {level}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-gray-500">—</span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-700 mb-3 block">Technology Levels</label>
+                <div className="flex flex-wrap gap-2">
+                  {safeArray(cfg?.technologyLevels).length ? (
+                    safeArray(cfg?.technologyLevels).map((level, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm border border-gray-200"
                       >
                         {level}
                       </span>
@@ -600,13 +530,18 @@ export const ContractDetail: React.FC = () => {
             <h2 className="text-lg text-gray-900 mb-6">Allowed Service Request Types</h2>
 
             <div className="space-y-4">
-              {acceptedRequestTypes.length ? (
-                acceptedRequestTypes.map((type, index) => (
+              {acceptedTypes.length ? (
+                acceptedTypes.map((t: any, index: number) => (
                   <div
                     key={index}
                     className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200"
                   >
-                    <span className="text-sm text-gray-900">{type}</span>
+                    <div className="text-sm text-gray-900">
+                      <div className="font-medium">{t.type}</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        biddingDeadlineDays: {t.biddingDeadlineDays} · offerCycles: {t.offerCycles}
+                      </div>
+                    </div>
                     <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs">
                       Accepted
                     </span>
@@ -617,35 +552,6 @@ export const ContractDetail: React.FC = () => {
               )}
             </div>
           </div>
-
-          {/* Offer Cycles */}
-          {offerCyclesAndDeadlines.length > 0 && (
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg text-gray-900">Offer Cycles and Deadlines</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs text-gray-500">Request Type</th>
-                      <th className="px-6 py-3 text-left text-xs text-gray-500">Offer Cycle</th>
-                      <th className="px-6 py-3 text-left text-xs text-gray-500">Response Deadline</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {offerCyclesAndDeadlines.map((cycle, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">{cycle.requestType}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900">{cycle.cycle}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900">{cycle.deadline}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -669,28 +575,24 @@ export const ContractDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {pricingLimits.length ? (
-                  pricingLimits.map((limit, index) => (
+                {pricingRows.length ? (
+                  pricingRows.map((row: any, index: number) => (
                     <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">{limit.role}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{row.role}</td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-                          {limit.experienceLevel}
+                          {row.experienceLevel}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {limit.technologyLevel ? (
-                          <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
-                            {limit.technologyLevel}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
+                        <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
+                          {row.technologyLevel}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
-                        {/* ✅ SAFE: maxRate may come as string from JSON */}
                         <span className="text-sm text-gray-900">
-                          €{toNumber((limit as any).maxRate).toFixed(2)}
+                          {cfg?.pricingRules?.currency || "EUR"}{" "}
+                          {toNumber(row.maxDailyRate).toLocaleString()}
                         </span>
                       </td>
                     </tr>
@@ -711,171 +613,66 @@ export const ContractDetail: React.FC = () => {
       {activeTab === "versions" && (
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-2">Version History & Documents</h2>
+            <h2 className="text-lg text-gray-900 mb-2">Versions & Documents</h2>
             <p className="text-sm text-gray-500">
-              Complete history of contract versions with status and downloadable documents
+              Version history from Contract Management (Group 2)
             </p>
           </div>
 
-          {versionHistory.length ? (
-            versionHistory.map((version, index) => (
-              <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                      <span className="text-blue-600">v{version.version}</span>
+          {versions.length ? (
+            versions.map((v: any, index: number) => {
+              const documents = safeArray<any>(v?.documents);
+              return (
+                <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-blue-600">v{v?.version ?? "—"}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-900">Version {v?.version ?? "—"}</p>
+                        <p className="text-xs text-gray-500 mt-1">{safeDateLabel(v?.versionDate)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-900">Version {version.version}</p>
-                      <p className="text-xs text-gray-500 mt-1">{version.date}</p>
-                    </div>
+
+                    <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                      {String(v?.status || "—")}
+                    </span>
                   </div>
 
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs ${
-                      version.status === "Signed"
-                        ? "bg-green-100 text-green-700"
-                        : version.status === "Proposed"
-                        ? "bg-yellow-100 text-yellow-700"
-                        : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {version.status}
-                  </span>
-                </div>
-
-                <div className="mb-4">
-                  <label className="text-xs text-gray-500">Changes</label>
-                  <p className="text-sm text-gray-700 mt-1">{version.changes}</p>
-                </div>
-
-                {version.documentLink && (
-                  <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
-                    <File size={16} className="text-gray-400" />
-                    <a
-                      href={version.documentLink}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Download Contract Document (PDF)
-                    </a>
+                  <div className="mb-4">
+                    <label className="text-xs text-gray-500">Change Summary</label>
+                    <p className="text-sm text-gray-700 mt-1">{v?.changeSummary || "—"}</p>
                   </div>
-                )}
-              </div>
-            ))
+
+                  {documents.length > 0 && (
+                    <div className="pt-4 border-t border-gray-200 space-y-2">
+                      {documents.map((d: any, i: number) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <File size={16} className="text-gray-400" />
+                          <a
+                            href={d?.url || "#"}
+                            className="text-sm text-blue-600 hover:text-blue-700"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {d?.name || "Document"}
+                          </a>
+                          <span className="text-xs text-gray-500">
+                            {d?.type ? `(${d.type})` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <p className="text-sm text-gray-500">No version history available.</p>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ✅ Offers tab (API-backed) */}
-      {activeTab === "offers" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Offers list */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <h2 className="text-lg text-gray-900">Your Offers</h2>
-
-                {canSubmitOffer && canOfferNow && !showOfferForm && (
-                  <button
-                    onClick={() => setShowOfferForm(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    <Plus size={18} />
-                    Submit Offer
-                  </button>
-                )}
-              </div>
-
-              {!canSubmitOffer && (
-                <div className="text-sm text-gray-600 mb-4">
-                  Only Provider Admin / Contract Coordinator / Supplier Representative can submit offers.
-                </div>
-              )}
-
-              {canSubmitOffer && !canOfferNow && (
-                <div className="text-sm text-gray-600 mb-4">
-                  Offers are only allowed when the contract is <strong>Published</strong> or{" "}
-                  <strong>In Negotiation</strong>.
-                </div>
-              )}
-
-              {canSubmitOffer && canOfferNow && showOfferForm && (
-                <div className="mb-4">
-                  <ContractOfferForm
-                    onSubmit={submitOffer}
-                    onCancel={() => setShowOfferForm(false)}
-                  />
-                </div>
-              )}
-
-              {offers.length === 0 ? (
-                <p className="text-sm text-gray-500">No offers submitted yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {offers.map((o) => (
-                    <div key={o.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="text-sm text-gray-900">Offer #{o.id}</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Submitted:{" "}
-                            {o.submittedAt ? new Date(o.submittedAt).toLocaleString() : "—"}
-                          </div>
-                        </div>
-                        <OfferStatusBadge status={o.status} />
-                      </div>
-
-                      <div className="mt-3 text-sm text-gray-700 space-y-1">
-                        {o.proposedDailyRate != null && (
-                          <div>Proposed Daily Rate: €{Number(o.proposedDailyRate).toLocaleString()}</div>
-                        )}
-                        {o.note && <div>Note: {o.note}</div>}
-                        {o.proposedTerms && (
-                          <div className="text-gray-600 whitespace-pre-line">
-                            Terms: {o.proposedTerms}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Quick actions/status */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-sm text-gray-900 mb-4">Contract Status</h3>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">Status</span>
-                <StatusBadge status={contract.status} />
-              </div>
-              <div className="text-xs text-gray-500 mt-3">
-                Published: {safeDateLabel(contract.publishedAt)}
-              </div>
-              <div className="text-xs text-gray-500">
-                Deadline: {safeDateLabel(contract.offerDeadline)}
-              </div>
-            </div>
-
-            {awardedToMe && contract.status === "Active" && (
-              <div className="bg-green-50 rounded-lg border border-green-200 p-4 text-sm text-green-900">
-                This contract is active and awarded to your provider.
-                <div className="mt-2">
-                  <Link to="/service-requests" className="underline">
-                    Go to Service Requests →
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>

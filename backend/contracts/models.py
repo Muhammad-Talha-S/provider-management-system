@@ -1,122 +1,113 @@
 from django.db import models
-from django.conf import settings
 from providers.models import Provider
 
 
 class Contract(models.Model):
+    """
+    Contract snapshot from Group2.
+
+    - We store the raw payload in `external_snapshot`
+    - We store canonical validation config under `config` (same shape as Group2 allowedConfiguration)
+    - Multi-provider awards are represented by ContractProviderStatus
+    """
+
     STATUS_CHOICES = [
-        ("Draft", "Draft"),
-        ("Published", "Published"),
-        ("In Negotiation", "In Negotiation"),
-        ("Awarded", "Awarded"),
-        ("Active", "Active"),
-        ("Expired", "Expired"),
+        ("DRAFT", "DRAFT"),
+        ("PUBLISHED", "PUBLISHED"),
+        ("IN_NEGOTIATION", "IN_NEGOTIATION"),
+        ("ACTIVE", "ACTIVE"),
+        ("EXPIRED", "EXPIRED"),
     ]
 
     KIND_CHOICES = [
-        ("Service", "Service"),
-        ("License", "License"),
-        ("Hardware", "Hardware"),
+        ("SERVICE", "SERVICE"),
+        ("LICENSE", "LICENSE"),
+        ("HARDWARE", "HARDWARE"),
     ]
 
-    id = models.CharField(primary_key=True, max_length=20)  # e.g. C001
-    title = models.CharField(max_length=255)
+    id = models.CharField(primary_key=True, max_length=50)  # contractId from Group2 (e.g. C001)
+    title = models.CharField(max_length=255, blank=True, default="")
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Draft")
-    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default="Service")
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default="SERVICE")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="DRAFT")
 
-    published_at = models.DateTimeField(null=True, blank=True)
-    start_date = models.DateField(null=True, blank=True)
-    end_date = models.DateField(null=True, blank=True)
+    publishing_date = models.DateField(null=True, blank=True)
+    offer_deadline_at = models.DateTimeField(null=True, blank=True)
 
+    stakeholders = models.JSONField(null=True, blank=True)
     scope_of_work = models.TextField(blank=True, default="")
     terms_and_conditions = models.TextField(blank=True, default="")
+    weighting = models.JSONField(null=True, blank=True)
 
-    functional_weight = models.PositiveIntegerField(null=True, blank=True)
-    commercial_weight = models.PositiveIntegerField(null=True, blank=True)
+    # Canonical validation config (based on Group2.allowedConfiguration)
+    config = models.JSONField(null=True, blank=True)
 
-    # {
-    #   "Single": {"offerDeadlineDays": 5, "cycles": 1},
-    #   "Team": {"offerDeadlineDays": 7, "cycles": 2}
-    # }
-    allowed_request_configs = models.JSONField(null=True, blank=True)
+    # Raw full payload from Group2 (audit/debug)
+    external_snapshot = models.JSONField(null=True, blank=True)
 
-    awarded_provider = models.ForeignKey(
-        Provider,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="awarded_contracts",
-    )
+    versions_and_documents = models.JSONField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
-
-    offer_deadline = models.DateTimeField(null=True, blank=True)
-
-    accepted_request_types = models.JSONField(null=True, blank=True, default=list)
-    allowed_domains = models.JSONField(null=True, blank=True, default=list)
-    allowed_roles = models.JSONField(null=True, blank=True, default=list)
-    experience_levels = models.JSONField(null=True, blank=True, default=list)
-
-    offer_cycles_and_deadlines = models.JSONField(null=True, blank=True, default=list)
-    pricing_limits = models.JSONField(null=True, blank=True, default=list)
-    version_history = models.JSONField(null=True, blank=True, default=list)
 
     def __str__(self):
         return f"{self.id} - {self.title}"
 
 
-class ContractAward(models.Model):
+class ContractProviderStatus(models.Model):
     """
-    Records the final award decision by Group2 system.
-    One contract can be awarded once (OneToOne).
+    Multi-provider link with per-provider status.
+    This is how we model:
+      - Provider A: ACTIVE (can receive service requests)
+      - Provider B: IN_NEGOTIATION (cannot receive service requests)
     """
-    contract = models.OneToOneField(Contract, on_delete=models.CASCADE, related_name="award")
-    provider = models.ForeignKey(Provider, on_delete=models.PROTECT, related_name="contract_awards")
 
-    awarded_at = models.DateTimeField(auto_now_add=True)
+    STATUS_CHOICES = [
+        ("IN_NEGOTIATION", "IN_NEGOTIATION"),
+        ("ACTIVE", "ACTIVE"),
+        ("EXPIRED", "EXPIRED"),
+    ]
 
-    # traceability fields
-    created_by_system = models.BooleanField(default=True)
+    contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name="provider_statuses")
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="contract_statuses")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="IN_NEGOTIATION")
+
+    awarded_at = models.DateTimeField(null=True, blank=True)
     note = models.TextField(blank=True, default="")
 
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("contract", "provider")
+
     def __str__(self):
-        return f"Award {self.contract_id} -> {self.provider_id}"
+        return f"{self.contract_id} - {self.provider_id} ({self.status})"
 
 
 class ContractOffer(models.Model):
     STATUS_CHOICES = [
-        ("Draft", "Draft"),
-        ("Submitted", "Submitted"),
-        ("Countered", "Countered"),
-        ("Accepted", "Accepted"),
-        ("Rejected", "Rejected"),
-        ("Withdrawn", "Withdrawn"),
+        ("DRAFT", "DRAFT"),
+        ("SUBMITTED", "SUBMITTED"),
+        ("COUNTERED", "COUNTERED"),
+        ("ACCEPTED", "ACCEPTED"),
+        ("REJECTED", "REJECTED"),
+        ("WITHDRAWN", "WITHDRAWN"),
     ]
 
     contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name="offers")
-    provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="contract_offers")
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name="contract_offers")
 
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="contract_offers_created",
-    )
+    created_by_user_id = models.CharField(max_length=50, blank=True, null=True)
 
-    # you always create as Submitted currently (fine)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Submitted")
+    request_snapshot = models.JSONField(null=True, blank=True)
+    response = models.JSONField(null=True, blank=True)
+    deltas = models.JSONField(null=True, blank=True)
 
-    proposed_daily_rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    proposed_terms = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="SUBMITTED")
+
     note = models.TextField(blank=True, default="")
 
-    submitted_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"Offer {self.id} ({self.provider_id}) -> {self.contract_id}"
