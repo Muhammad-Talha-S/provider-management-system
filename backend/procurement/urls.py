@@ -2,41 +2,42 @@ from django.urls import path
 from .views import (
     ServiceRequestListView,
     ServiceRequestDetailView,
-    Group3ServiceRequestCreateView,
+    Group3SyncServiceRequestsView,
     ServiceOfferListCreateView,
     ServiceOfferDetailView,
-    ServiceOfferStatusUpdateView,
     ServiceOrderListView,
     ServiceOrderDetailView,
-    MyOrdersView,
-    ServiceOrderChangeRequestListCreateView,
-    ServiceOrderChangeRequestDecisionView,
-    Group3CreateExtensionView,
-    Group3CreateSubstitutionView,
-    Group3OfferDecisionView,
+    Group3OfferDecisionWebhookView,
+    SuggestedSpecialistsView,
 )
 
 urlpatterns = [
-    # provider portal
-    path("service-requests/", ServiceRequestListView.as_view()),
-    path("service-requests/<str:id>/", ServiceRequestDetailView.as_view(), name="service-requests-detail"),
+    # Service Requests
+    path("service-requests/", ServiceRequestListView.as_view(), name="service-requests"),
+    path("service-requests/<str:id>/", ServiceRequestDetailView.as_view(), name="service-request-detail"),
 
-    # group3 api-key: create SR (Milestone 5)
-    path("group3/service-requests/", Group3ServiceRequestCreateView.as_view(), name="group3-create-sr"),
+    # Group3 sync
+    path("integrations/group3/sync-service-requests/", Group3SyncServiceRequestsView.as_view(), name="group3-sync"),
 
-    path("service-offers/", ServiceOfferListCreateView.as_view(), name="service-offers-list-create"),
-    path("service-offers/<int:id>/", ServiceOfferDetailView.as_view(), name="service-offers-detail"),
-    path("service-offers/<int:id>/status/", ServiceOfferStatusUpdateView.as_view(), name="service-offers-status"),
+    # Service Offers
+    path("service-offers/", ServiceOfferListCreateView.as_view(), name="service-offers"),
+    path("service-offers/<int:id>/", ServiceOfferDetailView.as_view(), name="service-offer-detail"),
 
-    path("service-orders/", ServiceOrderListView.as_view(), name="service-orders-list"),
-    path("service-orders/<int:id>/", ServiceOrderDetailView.as_view(), name="service-orders-detail"),
-    path("my-orders/", MyOrdersView.as_view(), name="my-orders"),
+    # Group3 → decision callback (offer id REQUIRED)
+    path(
+        "integrations/group3/offers/<int:offer_id>/decision/",
+        Group3OfferDecisionWebhookView.as_view(),
+        name="group3-offer-decision-webhook",
+    ),
 
-    path("service-order-change-requests/", ServiceOrderChangeRequestListCreateView.as_view(), name="order-change-requests"),
-    path("service-order-change-requests/<int:id>/decision/", ServiceOrderChangeRequestDecisionView.as_view(), name="order-change-requests-decision"),
+    # Suggested specialists
+    path(
+        "service-requests/<str:pk>/suggested-specialists/",
+        SuggestedSpecialistsView.as_view(),
+        name="service-request-suggested-specialists",
+    ),
 
-    # group3 api-key endpoints
-    path("group3/service-orders/<int:id>/extensions/", Group3CreateExtensionView.as_view(), name="group3-create-extension"),
-    path("group3/service-orders/<int:id>/substitutions/", Group3CreateSubstitutionView.as_view(), name="group3-create-substitution"),
-    path("group3/service-offers/<int:id>/decision/", Group3OfferDecisionView.as_view(), name="group3-offer-decision"),
+    # Service Orders
+    path("service-orders/", ServiceOrderListView.as_view(), name="service-orders"),
+    path("service-orders/<int:id>/", ServiceOrderDetailView.as_view(), name="service-order-detail"),
 ]

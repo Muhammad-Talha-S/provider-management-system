@@ -1,328 +1,323 @@
-from rest_framework import serializers
+from decimal import Decimal
+from django.utils.dateparse import parse_date, parse_datetime
 from django.utils import timezone
-from django.db import transaction
-from datetime import timedelta
+from rest_framework import serializers
 
-from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderChangeRequest
-from contracts.models import Contract
+from accounts.models import User
+from contracts.models import Contract, ContractProviderStatus
+from contracts.services.contract_validation import (
+    ContractValidationError,
+    validate_sr_against_contract,
+    normalize_sr_type,
+)
 
-
-# -------------------------
-# Helpers
-# -------------------------
-def _get_contract_or_error(contract_id: str) -> Contract:
-    try:
-        return Contract.objects.get(id=contract_id)
-    except Contract.DoesNotExist:
-        raise serializers.ValidationError({"linkedContractId": "Contract not found."})
+from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderAssignment
 
 
-def _get_request_cfg(contract: Contract, sr_type: str) -> dict | None:
-    cfgs = contract.allowed_request_configs or {}
-    return cfgs.get(sr_type)
-
-
-# -------------------------
-# Service Requests (Read)
-# -------------------------
 class ServiceRequestSerializer(serializers.ModelSerializer):
-    linkedContractId = serializers.CharField(source="linked_contract_id")
-    experienceLevel = serializers.CharField(source="experience_level")
-    startDate = serializers.DateField(source="start_date", allow_null=True, required=False)
-    endDate = serializers.DateField(source="end_date", allow_null=True, required=False)
+    requestNumber = serializers.CharField(source="request_number")
+    contractId = serializers.CharField(source="contract_id")
+    contractSupplier = serializers.CharField(source="contract_supplier")
 
-    totalManDays = serializers.IntegerField(source="total_man_days")
-    onsiteDays = serializers.IntegerField(source="onsite_days")
-    performanceLocation = serializers.CharField(source="performance_location")
+    requestedByUsername = serializers.CharField(source="requested_by_username")
+    requestedByRole = serializers.CharField(source="requested_by_role")
 
-    requiredLanguages = serializers.JSONField(source="required_languages")
-    mustHaveCriteria = serializers.JSONField(source="must_have_criteria")
-    niceToHaveCriteria = serializers.JSONField(source="nice_to_have_criteria")
+    projectId = serializers.CharField(source="project_id")
+    projectName = serializers.CharField(source="project_name")
 
-    taskDescription = serializers.CharField(source="task_description")
-
-    offerDeadlineAt = serializers.DateTimeField(source="offer_deadline_at", allow_null=True, required=False)
-    cycles = serializers.IntegerField(allow_null=True, required=False)
+    biddingCycleDays = serializers.IntegerField(source="bidding_cycle_days", allow_null=True, required=False)
+    biddingStartAt = serializers.DateTimeField(source="bidding_start_at", allow_null=True, required=False)
+    biddingEndAt = serializers.DateTimeField(source="bidding_end_at", allow_null=True, required=False)
+    biddingActive = serializers.BooleanField(source="bidding_active", allow_null=True, required=False)
 
     class Meta:
         model = ServiceRequest
         fields = [
             "id",
+            "external_id",
+            "requestNumber",
             "title",
             "type",
-            "linkedContractId",
-            "offerDeadlineAt",
-            "cycles",
-            "role",
-            "technology",
-            "experienceLevel",
-            "startDate",
-            "endDate",
-            "totalManDays",
-            "onsiteDays",
-            "performanceLocation",
-            "requiredLanguages",
-            "mustHaveCriteria",
-            "niceToHaveCriteria",
-            "taskDescription",
             "status",
+            "contractId",
+            "contractSupplier",
+            "projectId",
+            "projectName",
+            "requestedByUsername",
+            "requestedByRole",
+            "start_date",
+            "end_date",
+            "performance_location",
+            "max_offers",
+            "max_accepted_offers",
+            "required_languages",
+            "must_have_criteria",
+            "nice_to_have_criteria",
+            "task_description",
+            "further_information",
+            "roles",
+            "biddingCycleDays",
+            "biddingStartAt",
+            "biddingEndAt",
+            "biddingActive",
+            "created_at",
         ]
 
 
-# -------------------------
-# Service Requests (Group3 Create - API key)
-# -------------------------
-class Group3ServiceRequestCreateSerializer(serializers.Serializer):
-    id = serializers.CharField(max_length=20)
-    title = serializers.CharField(max_length=255)
-    type = serializers.ChoiceField(choices=["Single", "Multi", "Team", "Work Contract"])
+# procurement/serializers.py
+class ServiceOfferSpecialistInputSerializer(serializers.Serializer):
+    userId = serializers.CharField()
+    dailyRate = serializers.DecimalField(max_digits=12, decimal_places=2)
+    travellingCost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=Decimal("0"))
 
-    linkedContractId = serializers.CharField()
-
-    role = serializers.CharField(max_length=120)
-    technology = serializers.CharField(required=False, allow_blank=True)
-    experienceLevel = serializers.CharField(required=False, allow_blank=True)
-
-    startDate = serializers.DateField(required=False, allow_null=True)
-    endDate = serializers.DateField(required=False, allow_null=True)
-
-    totalManDays = serializers.IntegerField(required=False, default=0)
-    onsiteDays = serializers.IntegerField(required=False, default=0)
-
-    performanceLocation = serializers.CharField(required=False, allow_blank=True)
-
-    requiredLanguages = serializers.JSONField(required=False, default=list)
-    mustHaveCriteria = serializers.JSONField(required=False, default=list)
-    niceToHaveCriteria = serializers.JSONField(required=False, default=list)
-
-    taskDescription = serializers.CharField(required=False, allow_blank=True)
-
-    def validate(self, attrs):
-        contract_id = attrs["linkedContractId"]
-        sr_type = attrs["type"]
-
-        contract = _get_contract_or_error(contract_id)
-
-        # Must be awarded + active (Milestone 4)
-        if contract.status != "Active" or not contract.awarded_provider_id:
-            raise serializers.ValidationError({"linkedContractId": "Contract is not Active/Awarded."})
-
-        # Must be allowed by contract config (Milestone 4/5)
-        cfg = _get_request_cfg(contract, sr_type)
-        if not cfg:
-            raise serializers.ValidationError({"type": "This service request type is not allowed by contract config."})
-
-        # Validate config structure
-        if "offerDeadlineDays" not in cfg or "cycles" not in cfg:
-            raise serializers.ValidationError({"linkedContractId": "Contract config missing offerDeadlineDays/cycles."})
-
-        attrs["_contract"] = contract
-        attrs["_cfg"] = cfg
-        return attrs
-
-    @transaction.atomic
-    def create(self, validated_data):
-        contract: Contract = validated_data["_contract"]
-        cfg: dict = validated_data["_cfg"]
-
-        offer_deadline_days = int(cfg.get("offerDeadlineDays", 0))
-        cycles = int(cfg.get("cycles", 1))
-
-        offer_deadline_at = timezone.now() + timedelta(days=offer_deadline_days) if offer_deadline_days > 0 else None
-
-        sr = ServiceRequest.objects.create(
-            id=validated_data["id"],
-            title=validated_data["title"],
-            type=validated_data["type"],
-            linked_contract_id=validated_data["linkedContractId"],
-            offer_deadline_at=offer_deadline_at,
-            cycles=cycles,
-            role=validated_data["role"],
-            technology=validated_data.get("technology", ""),
-            experience_level=validated_data.get("experienceLevel", ""),
-            start_date=validated_data.get("startDate", None),
-            end_date=validated_data.get("endDate", None),
-            total_man_days=validated_data.get("totalManDays", 0),
-            onsite_days=validated_data.get("onsiteDays", 0),
-            performance_location=validated_data.get("performanceLocation", "Onshore"),
-            required_languages=validated_data.get("requiredLanguages", []),
-            must_have_criteria=validated_data.get("mustHaveCriteria", []),
-            nice_to_have_criteria=validated_data.get("niceToHaveCriteria", []),
-            task_description=validated_data.get("taskDescription", ""),
-            status="Open",
-        )
-        return sr
-
-
-# -------------------------
-# Service Offers (Read)
-# -------------------------
-class ServiceOfferSerializer(serializers.ModelSerializer):
-    serviceRequestId = serializers.CharField(source="service_request_id")
-    specialistId = serializers.CharField(source="specialist_id")
-    providerId = serializers.CharField(source="provider_id")
-
-    travelCostPerOnsiteDay = serializers.DecimalField(
-        source="travel_cost_per_onsite_day", max_digits=10, decimal_places=2
+    # FIX: no default, allow null, so backend computes when not provided
+    specialistCost = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
     )
-    contractualRelationship = serializers.CharField(source="contractual_relationship")
-    subcontractorCompany = serializers.CharField(source="subcontractor_company", allow_null=True, required=False)
-    mustHaveMatchPercentage = serializers.IntegerField(source="must_have_match_percentage", allow_null=True, required=False)
-    niceToHaveMatchPercentage = serializers.IntegerField(source="nice_to_have_match_percentage", allow_null=True, required=False)
+
+    matchMustHaveCriteria = serializers.BooleanField(required=False, default=True)
+    matchNiceToHaveCriteria = serializers.BooleanField(required=False, default=True)
+    matchLanguageSkills = serializers.BooleanField(required=False, default=True)
+
+
+class ServiceOfferSerializer(serializers.ModelSerializer):
+    """
+    Output format expected by frontend + aligns with your examples.
+    """
+
+    serviceRequest = ServiceRequestSerializer(source="service_request", read_only=True)
+    offerStatus = serializers.CharField(source="status", read_only=True)
+
+    specialists = serializers.SerializerMethodField()
+    totalCost = serializers.SerializerMethodField()
+    contractualRelationship = serializers.SerializerMethodField()
+    subcontractorCompany = serializers.SerializerMethodField()
+    supplierName = serializers.SerializerMethodField()
+    supplierRepresentative = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceOffer
         fields = [
             "id",
-            "serviceRequestId",
-            "providerId",
-            "specialistId",
-            "daily_rate",
-            "travelCostPerOnsiteDay",
-            "total_cost",
+            "serviceRequest",
+            "specialists",
+            "totalCost",
             "contractualRelationship",
             "subcontractorCompany",
-            "mustHaveMatchPercentage",
-            "niceToHaveMatchPercentage",
-            "status",
+            "supplierName",
+            "supplierRepresentative",
+            "offerStatus",
             "submitted_at",
             "created_at",
         ]
 
+    def _resp(self, obj: ServiceOffer) -> dict:
+        return obj.response if isinstance(obj.response, dict) else {}
 
-# -------------------------
-# Service Offers (Create) - with Milestone 4/5 enforcement
-# -------------------------
-class ServiceOfferCreateSerializer(serializers.ModelSerializer):
-    serviceRequestId = serializers.CharField(write_only=True)
-    specialistId = serializers.CharField(write_only=True)
+    def get_specialists(self, obj: ServiceOffer):
+        resp = self._resp(obj)
+        specs = resp.get("specialists")
+        return specs if isinstance(specs, list) else []
 
-    travelCostPerOnsiteDay = serializers.DecimalField(write_only=True, max_digits=10, decimal_places=2, required=False)
-    contractualRelationship = serializers.CharField(write_only=True, required=False)
-    subcontractorCompany = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
-    mustHaveMatchPercentage = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    niceToHaveMatchPercentage = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    def get_totalCost(self, obj: ServiceOffer):
+        resp = self._resp(obj)
+        v = resp.get("totalCost", 0)
+        try:
+            return float(v)
+        except Exception:
+            return 0
 
-    class Meta:
-        model = ServiceOffer
-        fields = [
-            "serviceRequestId",
-            "specialistId",
-            "daily_rate",
-            "travelCostPerOnsiteDay",
-            "total_cost",
-            "contractualRelationship",
-            "subcontractorCompany",
-            "mustHaveMatchPercentage",
-            "niceToHaveMatchPercentage",
-            "status",
-        ]
+    def get_contractualRelationship(self, obj: ServiceOffer):
+        return self._resp(obj).get("contractualRelationship") or ""
+
+    def get_subcontractorCompany(self, obj: ServiceOffer):
+        return self._resp(obj).get("subcontractorCompany")
+
+    def get_supplierName(self, obj: ServiceOffer):
+        return self._resp(obj).get("supplierName") or ""
+
+    def get_supplierRepresentative(self, obj: ServiceOffer):
+        return self._resp(obj).get("supplierRepresentative") or ""
+
+
+class ServiceOfferCreateSerializer(serializers.Serializer):
+    serviceRequestId = serializers.CharField()
+    offerStatus = serializers.ChoiceField(choices=["DRAFT", "SUBMITTED"], default="DRAFT")
+
+    contractualRelationship = serializers.CharField(required=False, allow_blank=True, default="")
+    subcontractorCompany = serializers.CharField(required=False, allow_blank=True, default="")
+
+    supplierName = serializers.CharField(required=False, allow_blank=True, default="")
+    supplierRepresentative = serializers.CharField(required=False, allow_blank=True, default="")
+
+    specialists = ServiceOfferSpecialistInputSerializer(many=True)
 
     def validate(self, attrs):
-        request = self.context["request"]
-        sr_id = attrs.get("serviceRequestId")
+        req = self.context["request"]
+        sr_id = attrs["serviceRequestId"]
 
         try:
             sr = ServiceRequest.objects.get(id=sr_id)
         except ServiceRequest.DoesNotExist:
-            raise serializers.ValidationError({"serviceRequestId": "Service Request not found."})
+            raise serializers.ValidationError({"serviceRequestId": "Service request not found."})
 
-        if sr.status != "Open":
-            raise serializers.ValidationError("Cannot create offer for a Closed Service Request.")
+        # Must be visible: provider must be ACTIVE for this contract
+        ok = ContractProviderStatus.objects.filter(
+            contract_id=sr.contract_id,
+            provider_id=req.user.provider_id,
+            status="ACTIVE",
+        ).exists()
+        if not ok:
+            raise serializers.ValidationError("Not allowed: your provider is not ACTIVE for this contract.")
 
-        # Milestone 4: SR must reference contract
-        if not sr.linked_contract_id:
-            raise serializers.ValidationError("Service Request is missing linked contract.")
+        # SR must be in bidding state
+        if (sr.bidding_active is not True) or (str(sr.status).upper() != "APPROVED_FOR_BIDDING"):
+            raise serializers.ValidationError("Service request is not approved/active for bidding.")
 
-        contract = _get_contract_or_error(sr.linked_contract_id)
+        if sr.bidding_end_at and timezone.now() > sr.bidding_end_at:
+            raise serializers.ValidationError("Bidding deadline has passed.")
 
-        # Must be Active & awarded
-        if contract.status != "Active" or not contract.awarded_provider_id:
-            raise serializers.ValidationError("Contract is not Active/Awarded; cannot submit offers.")
+        # Contract must exist for validation
+        contract = Contract.objects.filter(id=sr.contract_id).first()
+        if not contract or not isinstance(contract.config, dict):
+            raise serializers.ValidationError("Linked contract config missing; cannot validate offer.")
 
-        # Only awarded provider can offer
-        if contract.awarded_provider_id != request.user.provider_id:
-            raise serializers.ValidationError("Not allowed: your provider is not awarded for this contract.")
+        # Contract allows SR type / roles
+        try:
+            validate_sr_against_contract(
+                contract_config=contract.config,
+                sr_type=normalize_sr_type(sr.type),
+                roles=sr.roles or [],
+                must_have=sr.must_have_criteria or [],
+                nice_to_have=sr.nice_to_have_criteria or [],
+            )
+        except ContractValidationError as e:
+            raise serializers.ValidationError(str(e))
 
-        # SR.type must be allowed by contract config
-        cfg = _get_request_cfg(contract, sr.type)
-        if not cfg:
-            raise serializers.ValidationError("This SR type is not allowed under the awarded contract configuration.")
+        # Specialists rules by SR type
+        specs = attrs.get("specialists") or []
+        if len(specs) == 0:
+            raise serializers.ValidationError("Select at least one specialist.")
 
-        # Milestone 5: deadline enforcement
-        if sr.offer_deadline_at and timezone.now() > sr.offer_deadline_at:
-            raise serializers.ValidationError("Offer deadline passed for this Service Request.")
+        sr_type = str(sr.type).upper()
+        if sr_type == "SINGLE" and len(specs) != 1:
+            raise serializers.ValidationError("SINGLE request requires exactly 1 specialist.")
+
+        # Ensure specialists are from same provider and role=Specialist and active
+        user_ids = [s["userId"] for s in specs]
+        found = list(User.objects.filter(id__in=user_ids, provider_id=req.user.provider_id, role="Specialist", is_active=True))
+        if len(found) != len(user_ids):
+            raise serializers.ValidationError("One or more selected specialists are invalid for your provider.")
 
         attrs["_sr"] = sr
         return attrs
 
     def create(self, validated_data):
-        request = self.context["request"]
-        sr: ServiceRequest = validated_data.pop("_sr")
+        req = self.context["request"]
+        sr: ServiceRequest = validated_data["_sr"]
 
-        specialist_id = validated_data.pop("specialistId")
-        _ = validated_data.pop("serviceRequestId", None)
+        # Build specialists list (enriched)
+        input_specs = validated_data.get("specialists") or []
+        users = {u.id: u for u in User.objects.filter(id__in=[s["userId"] for s in input_specs])}
 
-        travel = validated_data.pop("travelCostPerOnsiteDay", 0)
-        rel = validated_data.pop("contractualRelationship", "Employee")
-        subc = validated_data.pop("subcontractorCompany", None)
-        mh = validated_data.pop("mustHaveMatchPercentage", None)
-        nh = validated_data.pop("niceToHaveMatchPercentage", None)
+        specialists_payload = []
+        total_cost = Decimal("0")
+
+        # Compute per-specialist cost (simple deterministic)
+        # If SR.roles has manDays/onsiteDays, use role[0] days for all (good enough for now).
+        roles = sr.roles if isinstance(sr.roles, list) else []
+        role0 = roles[0] if roles else {}
+        man_days = Decimal(str(role0.get("manDays") or 0))
+        onsite_days = Decimal(str(role0.get("onsiteDays") or 0))
+
+        for s in input_specs:
+            u = users.get(s["userId"])
+            daily = Decimal(str(s["dailyRate"]))
+            travel = Decimal(str(s.get("travellingCost") or 0))
+
+            # specialistCost: if FE sends it, accept; else compute
+            sc = s.get("specialistCost")
+            if sc is not None:
+                specialist_cost = Decimal(str(sc))
+            else:
+                specialist_cost = (daily * man_days) + (travel * onsite_days)
+
+            total_cost += specialist_cost
+
+            specialists_payload.append(
+                {
+                    "userId": u.id,
+                    "name": u.name,
+                    "materialNumber": getattr(u, "material_number", "") or getattr(u, "materialNumber", "") or "",
+                    "dailyRate": float(daily),
+                    "travellingCost": float(travel),
+                    "specialistCost": float(specialist_cost),
+                    "matchMustHaveCriteria": bool(s.get("matchMustHaveCriteria", True)),
+                    "matchNiceToHaveCriteria": bool(s.get("matchNiceToHaveCriteria", True)),
+                    "matchLanguageSkills": bool(s.get("matchLanguageSkills", True)),
+                }
+            )
+
+        response = {
+            "supplierName": validated_data.get("supplierName") or req.user.provider.name,
+            "supplierRepresentative": validated_data.get("supplierRepresentative") or req.user.name,
+            "contractualRelationship": validated_data.get("contractualRelationship") or "",
+            "subcontractorCompany": validated_data.get("subcontractorCompany") or "",
+            "specialists": specialists_payload,
+            "totalCost": float(total_cost),
+        }
+
+        snapshot = sr.external_payload or {}
 
         offer = ServiceOffer.objects.create(
             service_request=sr,
-            provider=request.user.provider,
-            specialist_id=specialist_id,
-            created_by=request.user,
-            travel_cost_per_onsite_day=travel,
-            contractual_relationship=rel,
-            subcontractor_company=subc,
-            must_have_match_percentage=mh,
-            nice_to_have_match_percentage=nh,
-            **validated_data,
+            provider=req.user.provider,
+            created_by=req.user,
+            request_snapshot=snapshot,
+            response=response,
+            status=validated_data.get("offerStatus", "DRAFT"),
         )
 
-        if offer.status == "Submitted" and offer.submitted_at is None:
+        if offer.status == "SUBMITTED":
             offer.submitted_at = timezone.now()
             offer.save(update_fields=["submitted_at"])
 
         return offer
 
 
-class ServiceOfferStatusUpdateSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(choices=["Submitted", "Withdrawn"])
+class ServiceOrderAssignmentSerializer(serializers.ModelSerializer):
+    specialistId = serializers.CharField(source="specialist_id", read_only=True)
+    specialistName = serializers.CharField(source="specialist.name", read_only=True)
+    materialNumber = serializers.SerializerMethodField()
 
-    def validate(self, attrs):
-        offer: ServiceOffer = self.context["offer"]
-        new_status = attrs["status"]
+    class Meta:
+        model = ServiceOrderAssignment
+        fields = [
+            "specialistId",
+            "specialistName",
+            "materialNumber",
+            "daily_rate",
+            "travelling_cost",
+            "specialist_cost",
+            "match_must_have_criteria",
+            "match_nice_to_have_criteria",
+            "match_language_skills",
+        ]
 
-        if new_status == "Submitted" and offer.status != "Draft":
-            raise serializers.ValidationError("Only Draft offers can be submitted.")
-        if new_status == "Withdrawn" and offer.status != "Submitted":
-            raise serializers.ValidationError("Only Submitted offers can be withdrawn.")
-
-        # Milestone 5: enforce deadline on submission too
-        sr = offer.service_request
-        if new_status == "Submitted":
-            if sr.offer_deadline_at and timezone.now() > sr.offer_deadline_at:
-                raise serializers.ValidationError("Offer deadline passed for this Service Request.")
-
-        return attrs
+    def get_materialNumber(self, obj: ServiceOrderAssignment):
+        u = obj.specialist
+        return getattr(u, "material_number", "") or getattr(u, "materialNumber", "") or ""
 
 
-# -------------------------
-# Service Orders / Change Requests (UNCHANGED from your file)
-# -------------------------
 class ServiceOrderSerializer(serializers.ModelSerializer):
     serviceOfferId = serializers.IntegerField(source="service_offer_id")
     serviceRequestId = serializers.CharField(source="service_request_id")
     providerId = serializers.CharField(source="provider_id")
-    specialistId = serializers.CharField(source="specialist_id")
 
-    startDate = serializers.DateField(source="start_date", allow_null=True, required=False)
-    endDate = serializers.DateField(source="end_date", allow_null=True, required=False)
-
-    manDays = serializers.IntegerField(source="man_days")
+    assignments = ServiceOrderAssignmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = ServiceOrder
@@ -331,261 +326,70 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             "serviceOfferId",
             "serviceRequestId",
             "providerId",
-            "specialistId",
             "title",
-            "startDate",
-            "endDate",
+            "start_date",
+            "end_date",
             "location",
-            "manDays",
+            "man_days",
             "total_cost",
             "status",
+            "assignments",
             "created_at",
         ]
 
 
-class Group3OfferDecisionSerializer(serializers.Serializer):
-    decision = serializers.ChoiceField(choices=["Accept", "Reject"])
-
-    def validate(self, attrs):
-        offer: ServiceOffer = self.context["offer"]
-        if offer.status not in ["Submitted", "Accepted", "Rejected"]:
-            raise serializers.ValidationError("Only Submitted offers can be decided by Group 3.")
-        return attrs
-
-    @transaction.atomic
-    def save(self, **kwargs):
-        offer: ServiceOffer = self.context["offer"]
-        decision = self.validated_data["decision"]
-
-        if offer.status in ["Accepted", "Rejected"]:
-            order = getattr(offer, "service_order", None)
-            return {"offer": offer, "order": order}
-
-        if decision == "Reject":
-            offer.status = "Rejected"
-            offer.save(update_fields=["status"])
-            return {"offer": offer, "order": None}
-
-        offer.status = "Accepted"
-        offer.save(update_fields=["status"])
-
-        sr = offer.service_request
-
-        order, created = ServiceOrder.objects.get_or_create(
-            service_offer=offer,
-            defaults={
-                "service_request": sr,
-                "provider": offer.provider,
-                "specialist": offer.specialist,
-                "title": sr.title,
-                "start_date": sr.start_date,
-                "end_date": sr.end_date,
-                "location": sr.performance_location or "Onshore",
-                "man_days": sr.total_man_days or 0,
-                "total_cost": offer.total_cost or 0,
-                "status": "Active",
-            },
-        )
-
-        if sr.status != "Closed":
-            sr.status = "Closed"
-            sr.save(update_fields=["status"])
-
-        return {"offer": offer, "order": order}
-
-
-class ServiceOrderChangeRequestSerializer(serializers.ModelSerializer):
-    serviceOrderId = serializers.IntegerField(source="service_order_id")
-    providerId = serializers.CharField(source="provider_id")
-
-    createdBySystem = serializers.BooleanField(source="created_by_system")
-    createdByUserId = serializers.CharField(source="created_by_user_id", allow_null=True, required=False)
-    decidedByUserId = serializers.CharField(source="decided_by_user_id", allow_null=True, required=False)
-
-    newEndDate = serializers.DateField(source="new_end_date", allow_null=True, required=False)
-    additionalManDays = serializers.IntegerField(source="additional_man_days", allow_null=True, required=False)
-    newTotalCost = serializers.DecimalField(source="new_total_cost", max_digits=12, decimal_places=2, allow_null=True, required=False)
-
-    oldSpecialistId = serializers.CharField(source="old_specialist_id", allow_null=True, required=False)
-    newSpecialistId = serializers.CharField(source="new_specialist_id", allow_null=True, required=False)
-
-    providerResponseNote = serializers.CharField(source="provider_response_note", required=False, allow_blank=True)
-
-    class Meta:
-        model = ServiceOrderChangeRequest
-        fields = [
-            "id",
-            "serviceOrderId",
-            "providerId",
-            "type",
-            "status",
-            "createdBySystem",
-            "createdByUserId",
-            "decidedByUserId",
-            "created_at",
-            "decided_at",
-            "reason",
-            "providerResponseNote",
-            "newEndDate",
-            "additionalManDays",
-            "newTotalCost",
-            "oldSpecialistId",
-            "newSpecialistId",
-        ]
-
-
-class ProviderCreateSubstitutionRequestSerializer(serializers.Serializer):
+def upsert_group3_service_request(item: dict) -> ServiceRequest:
     """
-    Provider-initiated substitution request (JWT).
+    Maps Group3 payload -> our ServiceRequest model.
+    Hardcode contract_id=C003 for now (your requirement).
     """
-    serviceOrderId = serializers.IntegerField()
-    newSpecialistId = serializers.CharField()
-    reason = serializers.CharField(required=False, allow_blank=True)
+    request_number = item.get("requestNumber") or ""
+    if not request_number:
+        raise ValueError("Missing requestNumber")
 
-    def validate(self, attrs):
-        request = self.context["request"]
-        user = request.user
+    sr_type = (item.get("type") or "SINGLE").upper()
 
-        if user.role not in ["Provider Admin", "Supplier Representative"]:
-            raise serializers.ValidationError("Only Provider Admin or Supplier Representative can request substitution.")
+    # TEMP: until Group3 fixes / until Group2 integration is connected
+    contract_id = "C003"
 
-        order_id = attrs["serviceOrderId"]
-        try:
-            order = ServiceOrder.objects.select_related("provider", "specialist").get(id=order_id)
-        except ServiceOrder.DoesNotExist:
-            raise serializers.ValidationError("Service order not found.")
+    roles = item.get("roles") if isinstance(item.get("roles"), list) else []
 
-        if order.provider_id != user.provider_id:
-            raise serializers.ValidationError("Not allowed.")
+    start_date = parse_date(item.get("startDate")) if item.get("startDate") else None
+    end_date = parse_date(item.get("endDate")) if item.get("endDate") else None
 
-        from accounts.models import User as AccountUser
-        try:
-            new_sp = AccountUser.objects.get(id=attrs["newSpecialistId"])
-        except AccountUser.DoesNotExist:
-            raise serializers.ValidationError("New specialist not found.")
+    bidding_start_at = parse_datetime(item.get("biddingStartAt")) if item.get("biddingStartAt") else None
+    bidding_end_at = parse_datetime(item.get("biddingEndAt")) if item.get("biddingEndAt") else None
 
-        if new_sp.role != "Specialist":
-            raise serializers.ValidationError("New specialist must be a Specialist.")
-        if new_sp.provider_id != user.provider_id:
-            raise serializers.ValidationError("New specialist must belong to your provider.")
-        if new_sp.id == order.specialist_id:
-            raise serializers.ValidationError("New specialist must be different from current specialist.")
-
-        attrs["_order"] = order
-        attrs["_new_sp"] = new_sp
-        return attrs
-
-    def create(self, validated_data):
-        request = self.context["request"]
-        order = validated_data["_order"]
-        new_sp = validated_data["_new_sp"]
-
-        cr = ServiceOrderChangeRequest.objects.create(
-            service_order=order,
-            provider_id=order.provider_id,
-            type="Substitution",
-            status="Requested",
-            created_by_system=False,
-            created_by_user=request.user,
-            reason=validated_data.get("reason", ""),
-            old_specialist_id=order.specialist_id,
-            new_specialist_id=new_sp.id,
-        )
-        return cr
-
-
-class Group3ExtensionCreateSerializer(serializers.Serializer):
-    """
-    Group3 creates extension request (API-key).
-    """
-    newEndDate = serializers.DateField()
-    additionalManDays = serializers.IntegerField(min_value=1)
-    newTotalCost = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
-    reason = serializers.CharField(required=False, allow_blank=True)
-
-    def validate(self, attrs):
-        order: ServiceOrder = self.context["order"]
-        if order.status != "Active":
-            raise serializers.ValidationError("Only Active orders can be extended.")
-        return attrs
-
-    def create(self, validated_data):
-        order: ServiceOrder = self.context["order"]
-        cr = ServiceOrderChangeRequest.objects.create(
-            service_order=order,
-            provider_id=order.provider_id,
-            type="Extension",
-            status="Requested",
-            created_by_system=True,
-            created_by_user=None,
-            reason=validated_data.get("reason", ""),
-            new_end_date=validated_data["newEndDate"],
-            additional_man_days=validated_data["additionalManDays"],
-            new_total_cost=validated_data.get("newTotalCost", None),
-        )
-        return cr
-
-
-class Group3SubstitutionCreateSerializer(serializers.Serializer):
-    """
-    Group3 creates substitution request (API-key).
-    Provider will approve/decline.
-    """
-    newSpecialistId = serializers.CharField()
-    reason = serializers.CharField(required=False, allow_blank=True)
-
-    def validate(self, attrs):
-        order: ServiceOrder = self.context["order"]
-
-        from accounts.models import User as AccountUser
-        try:
-            new_sp = AccountUser.objects.get(id=attrs["newSpecialistId"])
-        except AccountUser.DoesNotExist:
-            raise serializers.ValidationError("New specialist not found.")
-
-        if new_sp.role != "Specialist":
-            raise serializers.ValidationError("New specialist must be a Specialist.")
-        if new_sp.provider_id != order.provider_id:
-            raise serializers.ValidationError("New specialist must belong to the same provider as the order.")
-        if new_sp.id == order.specialist_id:
-            raise serializers.ValidationError("New specialist must be different from current specialist.")
-
-        attrs["_new_sp"] = new_sp
-        return attrs
-
-    def create(self, validated_data):
-        order: ServiceOrder = self.context["order"]
-        new_sp = validated_data["_new_sp"]
-
-        cr = ServiceOrderChangeRequest.objects.create(
-            service_order=order,
-            provider_id=order.provider_id,
-            type="Substitution",
-            status="Requested",
-            created_by_system=True,
-            created_by_user=None,
-            reason=validated_data.get("reason", ""),
-            old_specialist_id=order.specialist_id,
-            new_specialist_id=new_sp.id,
-        )
-        return cr
-
-
-class ProviderDecisionSerializer(serializers.Serializer):
-    decision = serializers.ChoiceField(choices=["Approve", "Decline"])
-    providerResponseNote = serializers.CharField(required=False, allow_blank=True)
-
-    def validate(self, attrs):
-        cr: ServiceOrderChangeRequest = self.context["change_request"]
-
-        if cr.status != "Requested":
-            raise serializers.ValidationError("Only Requested change requests can be decided.")
-
-        user = self.context["request"].user
-        if user.role not in ["Provider Admin", "Supplier Representative"]:
-            raise serializers.ValidationError("Not allowed.")
-
-        if cr.provider_id != user.provider_id:
-            raise serializers.ValidationError("Not allowed.")
-
-        return attrs
+    sr, _ = ServiceRequest.objects.update_or_create(
+        id=request_number,
+        defaults={
+            "external_id": item.get("id"),
+            "request_number": request_number,
+            "title": item.get("title") or "",
+            "type": sr_type,
+            "status": item.get("status") or "DRAFT",
+            "contract_id": contract_id,
+            "contract_supplier": item.get("contractSupplier") or "",
+            "start_date": start_date,
+            "end_date": end_date,
+            "performance_location": (item.get("performanceLocation") or "").strip() or "Onsite",
+            "max_offers": item.get("maxOffers"),
+            "max_accepted_offers": item.get("maxAcceptedOffers"),
+            "required_languages": item.get("requiredLanguages") or [],
+            "must_have_criteria": item.get("mustHaveCriteria") or [],
+            "nice_to_have_criteria": item.get("niceToHaveCriteria") or [],
+            "task_description": item.get("taskDescription") or "",
+            "further_information": item.get("furtherInformation") or "",
+            "roles": roles,
+            "project_id": item.get("projectId") or "",
+            "project_name": item.get("projectName") or "",
+            "requested_by_username": item.get("requestedByUsername") or "",
+            "requested_by_role": item.get("requestedByRole") or "",
+            "bidding_cycle_days": item.get("biddingCycleDays"),
+            "bidding_start_at": bidding_start_at,
+            "bidding_end_at": bidding_end_at,
+            "bidding_active": item.get("biddingActive"),
+            "external_payload": item,
+        },
+    )
+    return sr

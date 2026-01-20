@@ -1,83 +1,132 @@
-import React, { useState } from "react";
-import type { CreateContractOfferPayload } from "../api/contracts";
+import React, { useMemo, useState } from "react";
+import { createContractOffer} from "../api/contracts";
+import type { Contract, CreateContractOfferPayload} from "../api/contracts";
+import { useApp } from "../context/AppContext";
 
-export const ContractOfferForm: React.FC<{
-  onSubmit: (payload: CreateContractOfferPayload) => Promise<void>;
-  onCancel: () => void;
-}> = ({ onSubmit, onCancel }) => {
+type Props = {
+  contract: Contract;
+  onSubmitted?: () => void;
+};
+
+function pretty(v: any) {
+  try {
+    return JSON.stringify(v ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
+}
+
+function safeParseJson(text: string): any {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return null;
+  return JSON.parse(trimmed);
+}
+
+export const ContractOfferForm: React.FC<Props> = ({ contract, onSubmitted }) => {
+  const { accessToken } = useApp();
+
+  const snapshot = useMemo(() => {
+    return contract.externalSnapshot ?? contract;
+  }, [contract]);
+
   const [note, setNote] = useState("");
-  const [proposedDailyRate, setProposedDailyRate] = useState<string>("");
-  const [proposedTerms, setProposedTerms] = useState("");
+  const [responseJson, setResponseJson] = useState(pretty({ proposal: { note: "" } }));
+  const [deltasJson, setDeltasJson] = useState(pretty([]));
 
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
+  async function submit() {
+    if (!accessToken) return;
+    setError(null);
+
+    let response: any = null;
+    let deltas: any[] | null = null;
+
+    try {
+      response = safeParseJson(responseJson);
+    } catch (e: any) {
+      setError(`Response JSON is invalid: ${e?.message || ""}`);
+      return;
+    }
+
+    try {
+      const parsed = safeParseJson(deltasJson);
+      if (parsed === null) {
+        deltas = [];
+      } else if (Array.isArray(parsed)) {
+        deltas = parsed;
+      } else {
+        setError("Deltas must be a JSON array.");
+        return;
+      }
+    } catch (e: any) {
+      setError(`Deltas JSON is invalid: ${e?.message || ""}`);
+      return;
+    }
+
+    const payload: CreateContractOfferPayload = {
+      requestSnapshot: snapshot,
+      response,
+      deltas,
+      note: note || undefined,
+    };
+
     setLoading(true);
     try {
-      const payload: CreateContractOfferPayload = {
-        note: note.trim() || undefined,
-        proposedDailyRate: proposedDailyRate ? Number(proposedDailyRate) : null,
-        proposedTerms: proposedTerms.trim() || null,
-      };
-      await onSubmit(payload);
+      await createContractOffer(accessToken, contract.id, payload);
+      onSubmitted?.();
+    } catch (e: any) {
+      setError(e?.message || "Failed to submit offer");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="space-y-3">
+    <div style={{ display: "grid", gap: 12 }}>
       <div>
-        <label className="text-xs text-gray-500 block mb-1">Proposed Daily Rate (optional)</label>
-        <input
-          value={proposedDailyRate}
-          onChange={(e) => setProposedDailyRate(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          placeholder="e.g. 850"
-          inputMode="decimal"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs text-gray-500 block mb-1">Offer Note</label>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Contract snapshot (read-only)</div>
         <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          rows={3}
-          placeholder="Short summary of your offer..."
+          value={pretty(snapshot)}
+          readOnly
+          rows={10}
+          style={{ width: "100%", fontFamily: "monospace" }}
         />
       </div>
 
       <div>
-        <label className="text-xs text-gray-500 block mb-1">Proposed Terms (optional)</label>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Provider response (JSON)</div>
         <textarea
-          value={proposedTerms}
-          onChange={(e) => setProposedTerms(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          rows={4}
-          placeholder="Any proposed changes to terms..."
+          value={responseJson}
+          onChange={(e) => setResponseJson(e.target.value)}
+          rows={10}
+          style={{ width: "100%", fontFamily: "monospace" }}
+          placeholder='{"proposal": {"pricing": {...}, "exceptions": [...]}}'
         />
       </div>
 
-      <div className="flex gap-2">
-        <button
-          disabled={loading}
-          onClick={handleSubmit}
-          className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-60"
-        >
-          {loading ? "Submitting..." : "Submit Offer"}
-        </button>
-        <button
-          disabled={loading}
-          onClick={onCancel}
-          className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-60"
-        >
-          Cancel
-        </button>
+      <div>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Deltas / requested changes (JSON array)</div>
+        <textarea
+          value={deltasJson}
+          onChange={(e) => setDeltasJson(e.target.value)}
+          rows={6}
+          style={{ width: "100%", fontFamily: "monospace" }}
+          placeholder='[{"path":"terms.paymentDays","op":"replace","value":30,"reason":"..."}]'
+        />
       </div>
+
+      <div>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Note</div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} style={{ width: "100%" }} />
+      </div>
+
+      {error ? <div style={{ color: "crimson" }}>{error}</div> : null}
+
+      <button disabled={!accessToken || loading} onClick={submit}>
+        {loading ? "Submitting..." : "Submit contract offer"}
+      </button>
     </div>
   );
 };
-
-export default ContractOfferForm;

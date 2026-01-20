@@ -1,5 +1,9 @@
 django
-dotenv
+python-dotenv
 django-cors-headers
 djangorestframework
 djangorestframework-simplejwt
+gunicorn
+psycopg2-binary
+whitenoise
+requests
