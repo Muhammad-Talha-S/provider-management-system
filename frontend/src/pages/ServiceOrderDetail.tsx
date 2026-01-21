@@ -1,25 +1,60 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Clock, Building } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Clock } from "lucide-react";
 import { StatusBadge } from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
-import { hasAnyRole } from "../utils/roleHelpers";
 
 import { getServiceOrderById } from "../api/serviceOrders";
-import type { ServiceOrder } from "../api/serviceOrders";
 
-import { listChangeRequests, decideChangeRequest, requestSubstitution } from "../api/serviceOrderChangeRequests";
+import {
+  listChangeRequests,
+  decideChangeRequest,
+  requestSubstitution,
+} from "../api/serviceOrderChangeRequests";
 import type { ServiceOrderChangeRequest } from "../api/serviceOrderChangeRequests";
 
 import { getSpecialists } from "../api/specialists";
 import type { Specialist } from "../types";
+
+/**
+ * This page needs a "rich" order shape (title/dates/location/manDays/assignments).
+ * The list view types.ts ServiceOrder is minimal, so we define a local detail type.
+ */
+type ServiceOrderDetailModel = {
+  id: number;
+  serviceOfferId: number;
+  serviceRequestId: string;
+  providerId: string;
+
+  title: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  location: string;
+  manDays: number;
+
+  totalCost: string | number;
+  status: "ACTIVE" | "COMPLETED";
+
+  assignments?: Array<{
+    specialistId: string;
+    specialistName?: string;
+    materialNumber?: string;
+  }>;
+};
+
+function firstAssignedSpecialistId(order: ServiceOrderDetailModel): string {
+  if (order.assignments && order.assignments.length > 0) {
+    return order.assignments[0].specialistId;
+  }
+  return "-";
+}
 
 export const ServiceOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser, tokens, currentProvider } = useApp();
 
-  const [order, setOrder] = useState<ServiceOrder | null>(null);
+  const [order, setOrder] = useState<ServiceOrderDetailModel | null>(null);
   const [changeRequests, setChangeRequests] = useState<ServiceOrderChangeRequest[]>([]);
   const [specialists, setSpecialists] = useState<Specialist[]>([]);
 
@@ -32,29 +67,38 @@ export const ServiceOrderDetail: React.FC = () => {
 
   const access = tokens?.access || "";
 
-  const canProviderAct = hasAnyRole(currentUser, ["Supplier Representative", "Provider Admin"]);
+  const canProviderAct = useMemo(() => {
+    const role = currentUser?.role;
+    return role === "Supplier Representative" || role === "Provider Admin";
+  }, [currentUser]);
 
   const refreshAll = async () => {
     if (!access || !id) return;
+
     setLoading(true);
     setErr(null);
+
     try {
-      const o = await getServiceOrderById(access, Number(id));
+      // NOTE: getServiceOrderById currently returns whatever backend shape it provides.
+      // We treat it as a rich detail model for this detail page.
+      const o = (await getServiceOrderById(access, Number(id))) as unknown as ServiceOrderDetailModel;
       setOrder(o);
 
       const cr = await listChangeRequests(access);
-      // filter for this order only
       setChangeRequests(cr.filter((x) => x.serviceOrderId === Number(id)));
 
-      // only provider roles need specialists list for substitution UI
       if (canProviderAct) {
         const sp = await getSpecialists(access);
+
+        const currentSpecialistId = firstAssignedSpecialistId(o);
+
         const filtered = sp.filter(
           (s: any) =>
             s.providerId === currentProvider?.id &&
-            s.id !== o.specialistId &&
-            (s.availability || "") !== "Fully Booked"
+            s.id !== currentSpecialistId &&
+            String(s.availability || "") !== "Fully Booked"
         );
+
         setSpecialists(filtered);
       }
     } catch (e: any) {
@@ -69,11 +113,6 @@ export const ServiceOrderDetail: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, id]);
 
-  const pendingRequests = useMemo(
-    () => changeRequests.filter((r) => r.status === "Requested"),
-    [changeRequests]
-  );
-
   if (loading) {
     return (
       <div className="p-8">
@@ -87,13 +126,18 @@ export const ServiceOrderDetail: React.FC = () => {
       <div className="p-8">
         <div className="text-center">
           <p className="text-gray-500">{err || "Service Order not found"}</p>
-          <button onClick={() => navigate("/service-orders")} className="mt-4 text-blue-600 hover:text-blue-700">
+          <button
+            onClick={() => navigate("/service-orders")}
+            className="mt-4 text-blue-600 hover:text-blue-700"
+          >
             Back to Service Orders
           </button>
         </div>
       </div>
     );
   }
+
+  const specialistId = firstAssignedSpecialistId(order);
 
   const handleDecision = async (crId: number, decision: "Approve" | "Decline") => {
     try {
@@ -109,11 +153,13 @@ export const ServiceOrderDetail: React.FC = () => {
     try {
       if (!access) throw new Error("Not authenticated");
       if (!newSpecialistId) return alert("Select a replacement specialist");
+
       await requestSubstitution(access, {
         serviceOrderId: order.id,
         newSpecialistId,
         reason,
       });
+
       setShowSubstitutionForm(false);
       setNewSpecialistId("");
       setReason("");
@@ -164,22 +210,24 @@ export const ServiceOrderDetail: React.FC = () => {
 
               <div>
                 <label className="text-xs text-gray-500">Specialist</label>
-                <p className="text-sm text-gray-900 mt-1">{order.specialistId}</p>
+                <p className="text-sm text-gray-900 mt-1">{specialistId}</p>
               </div>
 
               <div>
                 <label className="text-xs text-gray-500">Title</label>
-                <p className="text-sm text-gray-900 mt-1">{order.title}</p>
+                <p className="text-sm text-gray-900 mt-1">{order.title || "-"}</p>
               </div>
 
               <div>
                 <label className="text-xs text-gray-500">Man-Days</label>
-                <p className="text-sm text-gray-900 mt-1">{order.manDays} days</p>
+                <p className="text-sm text-gray-900 mt-1">{order.manDays ?? 0} days</p>
               </div>
 
               <div>
                 <label className="text-xs text-gray-500">Total Cost</label>
-                <p className="text-sm text-gray-900 mt-1">€{Number(order.total_cost || 0).toLocaleString()}</p>
+                <p className="text-sm text-gray-900 mt-1">
+                  €{Number(order.totalCost || 0).toLocaleString()}
+                </p>
               </div>
 
               <div>
@@ -203,6 +251,7 @@ export const ServiceOrderDetail: React.FC = () => {
                   <p className="text-sm text-gray-900">{order.startDate || "-"}</p>
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
                 <Calendar size={18} className="text-gray-400" />
                 <div>
@@ -210,11 +259,12 @@ export const ServiceOrderDetail: React.FC = () => {
                   <p className="text-sm text-gray-900">{order.endDate || "-"}</p>
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
                 <MapPin size={18} className="text-gray-400" />
                 <div>
                   <label className="text-xs text-gray-500">Location</label>
-                  <p className="text-sm text-gray-900">{order.location}</p>
+                  <p className="text-sm text-gray-900">{order.location || "-"}</p>
                 </div>
               </div>
             </div>
@@ -233,10 +283,14 @@ export const ServiceOrderDetail: React.FC = () => {
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">{cr.type}</span>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                            {cr.type}
+                          </span>
                           <StatusBadge status={cr.status} />
                           {cr.createdBySystem && (
-                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Group 3</span>
+                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
+                              Group 3
+                            </span>
                           )}
                         </div>
 
@@ -244,18 +298,35 @@ export const ServiceOrderDetail: React.FC = () => {
 
                         {cr.type === "Extension" && (
                           <div className="mt-2 text-xs text-gray-600">
-                            <div>New End Date: <span className="text-gray-900">{cr.newEndDate || "-"}</span></div>
-                            <div>Additional Man Days: <span className="text-gray-900">{cr.additionalManDays ?? "-"}</span></div>
+                            <div>
+                              New End Date:{" "}
+                              <span className="text-gray-900">{cr.newEndDate || "-"}</span>
+                            </div>
+                            <div>
+                              Additional Man Days:{" "}
+                              <span className="text-gray-900">{cr.additionalManDays ?? "-"}</span>
+                            </div>
                             {cr.newTotalCost && (
-                              <div>New Total Cost: <span className="text-gray-900">€{Number(cr.newTotalCost).toLocaleString()}</span></div>
+                              <div>
+                                New Total Cost:{" "}
+                                <span className="text-gray-900">
+                                  €{Number(cr.newTotalCost).toLocaleString()}
+                                </span>
+                              </div>
                             )}
                           </div>
                         )}
 
                         {cr.type === "Substitution" && (
                           <div className="mt-2 text-xs text-gray-600">
-                            <div>Old Specialist: <span className="text-gray-900">{cr.oldSpecialistId || "-"}</span></div>
-                            <div>New Specialist: <span className="text-gray-900">{cr.newSpecialistId || "-"}</span></div>
+                            <div>
+                              Old Specialist:{" "}
+                              <span className="text-gray-900">{cr.oldSpecialistId || "-"}</span>
+                            </div>
+                            <div>
+                              New Specialist:{" "}
+                              <span className="text-gray-900">{cr.newSpecialistId || "-"}</span>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -266,7 +337,6 @@ export const ServiceOrderDetail: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Actions only for provider roles and only when Requested */}
                     {canProviderAct && cr.status === "Requested" && (
                       <div className="mt-3 flex gap-2">
                         <button
@@ -292,8 +362,8 @@ export const ServiceOrderDetail: React.FC = () => {
 
         {/* Right Column */}
         <div className="space-y-6">
-          {/* Substitution request (Provider roles only) */}
-          {order.status === "Active" && canProviderAct && (
+          {/* Substitution request */}
+          {order.status === "ACTIVE" && canProviderAct && (
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <h2 className="text-sm text-gray-900 mb-4">Actions</h2>
 
@@ -353,7 +423,7 @@ export const ServiceOrderDetail: React.FC = () => {
           )}
 
           {/* Extension note */}
-          {order.status === "Active" && (
+          {order.status === "ACTIVE" && (
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
               <p className="text-sm text-blue-700">
                 <strong>Note:</strong> Extensions are initiated by the Project Manager (Group 3) externally via API.

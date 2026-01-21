@@ -27,7 +27,7 @@ export const Sidebar: React.FC = () => {
 
   // Specialist-only navigation
   const specialistNavItems = [
-    { path: "/users/" + currentUser.id, label: "My Profile", icon: UserIcon, roles: ["Specialist"] },
+    { path: "/specialists/" + currentUser.id, label: "My Profile", icon: UserIcon, roles: ["Specialist"] },
     { path: "/my-orders", label: "My Orders", icon: Package, roles: ["Specialist"] },
   ];
 
@@ -38,10 +38,7 @@ export const Sidebar: React.FC = () => {
     { path: "/service-offers", label: "Service Offers", icon: Send, roles: ["Provider Admin", "Supplier Representative"] },
     { path: "/service-orders", label: "Service Orders", icon: Package, roles: ["Provider Admin", "Supplier Representative"] },
     { path: "/contracts", label: "Contracts", icon: FileCheck, roles: ["Provider Admin", "Contract Coordinator"] },
-
-    // SINGLE page for all users (your requirement)
     { path: "/specialists", label: "Users", icon: Users, roles: ["Provider Admin", "Supplier Representative", "Contract Coordinator"] },
-
     { path: "/provider", label: "Provider", icon: Building2, roles: ["Provider Admin"] },
     { path: "/activity-log", label: "Activity Log", icon: Activity, roles: ["Provider Admin"] },
   ];
@@ -66,7 +63,6 @@ export const Sidebar: React.FC = () => {
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
 
-            // highlight also for detail pages (e.g. /specialists/ID)
             const isActive =
               location.pathname === item.path ||
               location.pathname.startsWith(item.path + "/");
@@ -107,7 +103,6 @@ export const Sidebar: React.FC = () => {
             </Badge>
           </div>
 
-          {/* Logout button (your requirement) */}
           <button
             type="button"
             onClick={handleLogout}

@@ -150,7 +150,7 @@ export const SpecialistsPage: React.FC = () => {
                               ? "Coordinator"
                               : "Specialist"}
                           </Badge>
-                          <StatusBadge status={user.status} size="sm" />
+                          <StatusBadge status={user.status} />
                         </div>
 
                         {/* Specialist-only info */}
