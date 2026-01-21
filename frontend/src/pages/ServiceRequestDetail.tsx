@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
-import { ArrowLeft, FileText, Calendar, MapPin, Languages, CheckCircle, Star, Plus, Clock } from "lucide-react";
+import { ArrowLeft, FileText, Calendar, Languages, CheckCircle, Star, Plus, Clock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { getServiceRequestById } from "../api/serviceRequests";
 

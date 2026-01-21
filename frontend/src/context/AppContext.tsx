@@ -5,13 +5,15 @@ import { meRequest, refreshRequest } from "../api/session";
 
 type Tokens = { access: string; refresh: string };
 
+type LoginResult = { success: true } | { success: false; error: string };
+
 interface AppContextType {
   currentUser: User | null;
   currentProvider: Provider | null;
   tokens: Tokens | null;
   isAuthenticated: boolean;
 
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => void;
 
   setCurrentUser: (u: User | null) => void;
@@ -39,15 +41,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentProvider(null);
   };
 
-  const login = async (email: string, password: string) => {
-    const data = await loginRequest(email, password);
+  const login = async (email: string, password: string): Promise<LoginResult> => {
+    try {
+      const data = await loginRequest(email, password);
 
-    localStorage.setItem(LS_ACCESS, data.access);
-    localStorage.setItem(LS_REFRESH, data.refresh);
+      localStorage.setItem(LS_ACCESS, data.access);
+      localStorage.setItem(LS_REFRESH, data.refresh);
 
-    setTokens({ access: data.access, refresh: data.refresh });
-    setCurrentUser(data.user);
-    setCurrentProvider(data.provider);
+      setTokens({ access: data.access, refresh: data.refresh });
+      setCurrentUser(data.user);
+      setCurrentProvider(data.provider);
+
+      return { success: true };
+    } catch (e: any) {
+      // Ensure UI gets a message
+      const msg = e?.message || "Invalid email or password.";
+      return { success: false, error: msg };
+    }
   };
 
   useEffect(() => {
@@ -61,7 +71,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return;
         }
 
-        // Try /me with current access
         try {
           const me = await meRequest(access);
           setTokens({ access, refresh });
@@ -70,7 +79,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setBooting(false);
           return;
         } catch {
-          // Access may be expired → refresh
+          // expired access -> refresh below
         }
 
         const refreshed = await refreshRequest(refresh);

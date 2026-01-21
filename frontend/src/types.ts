@@ -167,7 +167,18 @@ export interface ServiceOrder {
   serviceOfferId: number;
   serviceRequestId: string;
   providerId: string;
+
+  // canonical status used throughout frontend
   status: "ACTIVE" | "COMPLETED";
+
+  // fields used by ServiceOrdersPage / ServiceOrderDetail / MyOrders
+  specialistId?: string;
+  title?: string;
+  manDays?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  location?: string;
+
   totalCost?: number;
   createdAt: string;
 }

@@ -1,22 +1,29 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin } from "lucide-react";
+
 import { StatusBadge } from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
 import { getServiceOrders } from "../api/serviceOrders";
-import type { ServiceOrder } from "../api/serviceOrders";
+import type { ServiceOrder } from "../types";
 
 export const ServiceOrdersPage: React.FC = () => {
   const { tokens } = useApp();
+
   const [rows, setRows] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
-      if (!tokens?.access) return;
+      if (!tokens?.access) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
+
       try {
         const data = await getServiceOrders(tokens.access);
         setRows(data);
@@ -26,6 +33,7 @@ export const ServiceOrdersPage: React.FC = () => {
         setLoading(false);
       }
     };
+
     run();
   }, [tokens?.access]);
 
@@ -65,7 +73,7 @@ export const ServiceOrdersPage: React.FC = () => {
                     </td>
 
                     <td className="px-6 py-4 text-sm text-gray-700">{order.serviceRequestId}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{order.specialistId}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{order.specialistId || "-"}</td>
 
                     <td className="px-6 py-4 text-sm text-gray-700">
                       {order.startDate || "-"} — {order.endDate || "-"}
@@ -74,11 +82,12 @@ export const ServiceOrdersPage: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1 text-sm text-gray-700">
                         <MapPin size={14} className="text-gray-400" />
-                        {order.location}
+                        {order.location || "-"}
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 text-sm text-gray-900">{order.manDays}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{order.manDays ?? "-"}</td>
+
                     <td className="px-6 py-4">
                       <StatusBadge status={order.status} />
                     </td>
