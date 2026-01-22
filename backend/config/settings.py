@@ -12,7 +12,7 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = 'django-insecure-y=x5in!2(896cny5=sv&2mzyo_2@#rbaiei57p84ct(o1vbtma'
 DEBUG = os.getenv("DEBUG", "False") == "True"
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 # Integration keys/URLs
 SERVICE_MGMT_API_KEY = os.getenv("SERVICE_MGMT_API_KEY", "")
@@ -104,6 +104,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
