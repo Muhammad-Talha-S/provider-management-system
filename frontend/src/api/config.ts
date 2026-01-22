@@ -1,2 +1,1 @@
-export const API_BASE: string =
-  (import.meta as any).env?.VITE_API_BASE?.toString() || "";
+export const API_BASE: string = "https://provider-management-system-production.up.railway.app";

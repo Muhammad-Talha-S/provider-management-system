@@ -1,34 +1,61 @@
-import type { ServiceOrder } from "../types";
 import { authFetch } from "./http";
 
-/**
- * Convert backend/service-order payload to frontend ServiceOrder type.
- * Ensures status matches types.ts: "ACTIVE" | "COMPLETED".
- */
-function mapOrder(raw: any): ServiceOrder {
-  const rawStatus = String(raw?.status || "").toUpperCase();
+export type ServiceOrder = {
+  id: number;
+  serviceOfferId: number;
+  serviceRequestId: string;
+  providerId: string;
 
-  const status: ServiceOrder["status"] =
-    rawStatus === "COMPLETED" ? "COMPLETED" : "ACTIVE";
+  // derived from assignments (first specialist shown in table)
+  specialistId?: string;
+
+  title: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  location: string;
+  manDays: number;
+  totalCost: string; // Decimal string
+  status: "ACTIVE" | "COMPLETED";
+  createdAt: string;
+
+  assignments?: Array<{
+    specialistId: string;
+    specialistName: string;
+    materialNumber: string;
+    daily_rate: string;
+    travelling_cost: string;
+    specialist_cost: string;
+    match_must_have_criteria: boolean;
+    match_nice_to_have_criteria: boolean;
+    match_language_skills: boolean;
+  }>;
+};
+
+function mapOrder(raw: any): ServiceOrder {
+  const assignments = Array.isArray(raw?.assignments) ? raw.assignments : [];
+  const firstSpecialistId = assignments?.[0]?.specialistId;
 
   return {
-    id: Number(raw.id),
-    serviceOfferId: Number(raw.serviceOfferId ?? raw.service_offer_id ?? 0),
-    serviceRequestId: String(raw.serviceRequestId ?? raw.service_request_id ?? ""),
-    providerId: String(raw.providerId ?? raw.provider_id ?? ""),
-    status,
-    totalCost:
-      raw.totalCost ??
-      raw.total_cost ??
-      (raw.total_cost === 0 ? 0 : undefined),
-    createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+    id: raw.id,
+    serviceOfferId: raw.serviceOfferId,
+    serviceRequestId: raw.serviceRequestId,
+    providerId: raw.providerId,
+
+    specialistId: firstSpecialistId,
+
+    title: raw.title || "",
+    startDate: raw.start_date ?? null,
+    endDate: raw.end_date ?? null,
+    location: raw.location || "",
+    manDays: Number(raw.man_days ?? 0),
+    totalCost: String(raw.total_cost ?? "0"),
+    status: String(raw.status || "").toUpperCase() === "COMPLETED" ? "Completed" : "Active",
+    createdAt: raw.created_at,
+
+    assignments,
   };
 }
 
-/**
- * Fetch all service orders visible for the current role.
- * Backend is expected to filter for Specialist vs other roles.
- */
 export async function getServiceOrders(access: string): Promise<ServiceOrder[]> {
   const res = await authFetch("/api/service-orders/", access, { method: "GET" });
   const data = await res.json().catch(() => null);
@@ -36,7 +63,6 @@ export async function getServiceOrders(access: string): Promise<ServiceOrder[]> 
   return (Array.isArray(data) ? data : []).map(mapOrder);
 }
 
-/** Fetch a single service order by id. */
 export async function getServiceOrderById(access: string, id: number | string): Promise<ServiceOrder> {
   const res = await authFetch(`/api/service-orders/${id}/`, access, { method: "GET" });
   const data = await res.json().catch(() => null);
@@ -44,7 +70,6 @@ export async function getServiceOrderById(access: string, id: number | string): 
   return mapOrder(data);
 }
 
-/** Alias for Specialist dashboard/orders: uses the same endpoint. */
 export async function getMyOrders(access: string): Promise<ServiceOrder[]> {
   return getServiceOrders(access);
 }

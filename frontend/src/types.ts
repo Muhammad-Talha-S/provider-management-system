@@ -168,17 +168,21 @@ export interface ServiceOrder {
   serviceRequestId: string;
   providerId: string;
 
-  // canonical status used throughout frontend
-  status: "ACTIVE" | "COMPLETED";
+  /** Assigned specialist (internal user id like SP2007). */
+  specialistId: string;
 
-  // fields used by ServiceOrdersPage / ServiceOrderDetail / MyOrders
-  specialistId?: string;
-  title?: string;
-  manDays?: number;
+  /** Convenience fields for UI (coming from backend). */
+  title: string;
   startDate?: string | null;
   endDate?: string | null;
-  location?: string;
+  location: string;
+  manDays: number;
 
-  totalCost?: number;
+  /** Canonical status used across frontend UI */
+  status: "ACTIVE" | "COMPLETED";
+
+  /** Money fields normalized for UI usage */
+  totalCost?: number | null;
+
   createdAt: string;
 }

@@ -23,8 +23,6 @@ type StatCard = {
 };
 
 function isOpenForBidding(sr: ServiceRequest): boolean {
-  // Group3 example: "APPROVED_FOR_BIDDING"
-  // Also treat biddingActive=true as open.
   return sr.status === "APPROVED_FOR_BIDDING" || Boolean(sr.biddingActive);
 }
 
@@ -59,7 +57,6 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
 
-  // Data buckets (only some are used per role)
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [serviceOffers, setServiceOffers] = useState<ServiceOffer[]>([]);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
@@ -83,29 +80,31 @@ export const Dashboard: React.FC = () => {
       setError("");
 
       try {
-        // Load only what each role needs
         if (role === "Supplier Representative") {
           const [srs, offers, orders, specialists] = await Promise.all([
             getServiceRequests(access),
             getServiceOffers(access),
-            getServiceOrders(access), // MUST return types.ts ServiceOrder[]
+            getServiceOrders(access),
             getSpecialists(access),
           ]);
 
           setServiceRequests(srs);
           setServiceOffers(offers);
           setServiceOrders(orders);
+          setSpecialistCountAvailable((specialists || []).filter((s: any) => s.availability === "Available").length);
+        }
 
-          setSpecialistCountAvailable(
-            (specialists || []).filter((s: any) => s.availability === "Available").length
-          );
-        } else if (role === "Specialist") {
+        if (role === "Specialist") {
           const orders = await getServiceOrders(access);
           setServiceOrders(orders);
-        } else if (role === "Contract Coordinator") {
+        }
+
+        if (role === "Contract Coordinator") {
           const cs = await getContracts(access);
           setContracts(cs);
-        } else if (role === "Provider Admin") {
+        }
+
+        if (role === "Provider Admin") {
           const prov = await getMyProvider(access);
           setProvider(prov);
         }
@@ -125,63 +124,20 @@ export const Dashboard: React.FC = () => {
     const active = serviceOrders.filter(isActiveOrder).length;
 
     return [
-      {
-        label: "Open Service Requests",
-        value: openSR,
-        icon: FileText,
-        color: "bg-blue-50 text-blue-600",
-        link: "/service-requests",
-      },
-      {
-        label: "Pending Offers",
-        value: pending,
-        icon: Send,
-        color: "bg-yellow-50 text-yellow-600",
-        link: "/service-offers",
-      },
-      {
-        label: "Active Orders",
-        value: active,
-        icon: Package,
-        color: "bg-green-50 text-green-600",
-        link: "/service-orders",
-      },
-      {
-        label: "Available Specialists",
-        value: specialistCountAvailable,
-        icon: Users,
-        color: "bg-purple-50 text-purple-600",
-        link: "/specialists",
-      },
+      { label: "Open Service Requests", value: openSR, icon: FileText, color: "bg-blue-50 text-blue-600", link: "/service-requests" },
+      { label: "Pending Offers", value: pending, icon: Send, color: "bg-yellow-50 text-yellow-600", link: "/service-offers" },
+      { label: "Active Orders", value: active, icon: Package, color: "bg-green-50 text-green-600", link: "/service-orders" },
+      { label: "Available Specialists", value: specialistCountAvailable, icon: Users, color: "bg-purple-50 text-purple-600", link: "/specialists" },
     ];
   }, [serviceRequests, serviceOffers, serviceOrders, specialistCountAvailable]);
 
   const specialistStats: StatCard[] = useMemo(() => {
     const active = serviceOrders.filter(isActiveOrder).length;
     const completed = serviceOrders.filter((o) => o.status === "COMPLETED").length;
-
     return [
-      {
-        label: "My Active Orders",
-        value: active,
-        icon: Package,
-        color: "bg-green-50 text-green-600",
-        link: "/my-orders",
-      },
-      {
-        label: "My Completed Orders",
-        value: completed,
-        icon: Package,
-        color: "bg-gray-50 text-gray-700",
-        link: "/my-orders",
-      },
-      {
-        label: "My Profile",
-        value: "View",
-        icon: Users,
-        color: "bg-blue-50 text-blue-600",
-        link: currentUser ? `/specialists/${currentUser.id}` : "/specialists",
-      },
+      { label: "My Active Orders", value: active, icon: Package, color: "bg-green-50 text-green-600", link: "/my-orders" },
+      { label: "My Completed Orders", value: completed, icon: Package, color: "bg-gray-50 text-gray-700", link: "/my-orders" },
+      { label: "My Profile", value: "View", icon: Users, color: "bg-blue-50 text-blue-600", link: currentUser ? `/specialists/${currentUser.id}` : "/specialists" },
     ];
   }, [serviceOrders, currentUser]);
 
@@ -191,27 +147,9 @@ export const Dashboard: React.FC = () => {
     const active = contracts.filter((c) => c.status === "ACTIVE").length;
 
     return [
-      {
-        label: "Published Contracts",
-        value: published,
-        icon: FileCheck,
-        color: "bg-blue-50 text-blue-600",
-        link: "/contracts",
-      },
-      {
-        label: "In Negotiation",
-        value: negotiation,
-        icon: FileCheck,
-        color: "bg-yellow-50 text-yellow-600",
-        link: "/contracts",
-      },
-      {
-        label: "Active Contracts",
-        value: active,
-        icon: FileCheck,
-        color: "bg-green-50 text-green-600",
-        link: "/contracts",
-      },
+      { label: "Published Contracts", value: published, icon: FileCheck, color: "bg-blue-50 text-blue-600", link: "/contracts" },
+      { label: "In Negotiation", value: negotiation, icon: FileCheck, color: "bg-yellow-50 text-yellow-600", link: "/contracts" },
+      { label: "Active Contracts", value: active, icon: FileCheck, color: "bg-green-50 text-green-600", link: "/contracts" },
     ];
   }, [contracts]);
 
@@ -219,38 +157,15 @@ export const Dashboard: React.FC = () => {
     const completeness = provider ? providerProfileCompleteness(provider) : { percent: 0, missing: ["loading"] };
 
     return [
-      {
-        label: "Provider Profile",
-        value: `${completeness.percent}%`,
-        icon: Users,
-        color: "bg-blue-50 text-blue-600",
-        link: "/provider",
-      },
-      {
-        label: "Activity Log",
-        value: "View",
-        icon: Activity,
-        color: "bg-gray-50 text-gray-700",
-        link: "/activity-log",
-      },
+      { label: "Provider Profile", value: `${completeness.percent}%`, icon: Users, color: "bg-blue-50 text-blue-600", link: "/provider" },
+      { label: "Activity Log", value: "View", icon: Activity, color: "bg-gray-50 text-gray-700", link: "/activity-log" },
     ];
   }, [provider]);
 
-  const openServiceRequests = useMemo(() => {
-    return serviceRequests.filter(isOpenForBidding).slice(0, 5);
-  }, [serviceRequests]);
-
-  const recentOffers = useMemo(() => {
-    return serviceOffers.slice(0, 5);
-  }, [serviceOffers]);
-
-  const myOrdersPreview = useMemo(() => {
-    return serviceOrders.slice(0, 5);
-  }, [serviceOrders]);
-
-  const recentContracts = useMemo(() => {
-    return contracts.slice(0, 5);
-  }, [contracts]);
+  const openServiceRequests = useMemo(() => serviceRequests.filter(isOpenForBidding).slice(0, 5), [serviceRequests]);
+  const recentOffers = useMemo(() => serviceOffers.slice(0, 5), [serviceOffers]);
+  const myOrdersPreview = useMemo(() => serviceOrders.slice(0, 5), [serviceOrders]);
+  const recentContracts = useMemo(() => contracts.slice(0, 5), [contracts]);
 
   const title = useMemo(() => {
     if (!currentUser) return "Dashboard";
@@ -263,10 +178,8 @@ export const Dashboard: React.FC = () => {
 
   const handleSyncGroup3 = async () => {
     if (!access) return;
-
     setSyncingGroup3(true);
     setError("");
-
     try {
       await syncServiceRequestsFromGroup3(access);
       const srs = await getServiceRequests(access);
@@ -280,10 +193,8 @@ export const Dashboard: React.FC = () => {
 
   const handleSyncGroup2 = async () => {
     if (!access) return;
-
     setSyncingGroup2(true);
     setError("");
-
     try {
       await syncContractsFromGroup2(access);
       const cs = await getContracts(access);
@@ -298,9 +209,7 @@ export const Dashboard: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="p-8">
-        <div className="bg-white border border-gray-200 rounded-lg p-6 text-gray-600">
-          Please login to view the dashboard.
-        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-6 text-gray-600">Please login to view the dashboard.</div>
       </div>
     );
   }
@@ -324,7 +233,6 @@ export const Dashboard: React.FC = () => {
           <p className="text-gray-500 mt-1">{title}</p>
         </div>
 
-        {/* Optional sync buttons */}
         <div className="flex gap-2">
           {role === "Supplier Representative" && (
             <button
@@ -354,26 +262,17 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">{error}</div>}
 
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-lg p-6 text-gray-600">Loading dashboard...</div>
       ) : (
         <>
-          {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {statsForRole.map((stat) => {
               const Icon = stat.icon;
               return (
-                <Link
-                  key={stat.label}
-                  to={stat.link}
-                  className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow"
-                >
+                <Link key={stat.label} to={stat.link} className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-500">{stat.label}</p>
@@ -388,23 +287,16 @@ export const Dashboard: React.FC = () => {
             })}
           </div>
 
-          {/* Role-specific content */}
           {role === "Supplier Representative" && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Open Service Requests */}
               <div className="bg-white rounded-lg border border-gray-200">
                 <div className="p-6 border-b border-gray-200">
                   <h2 className="text-lg text-gray-900">Open Service Requests</h2>
                 </div>
-
                 <div className="divide-y divide-gray-200">
                   {openServiceRequests.length > 0 ? (
                     openServiceRequests.map((sr) => (
-                      <Link
-                        key={sr.id}
-                        to={`/service-requests/${sr.id}`}
-                        className="p-6 hover:bg-gray-50 transition-colors block"
-                      >
+                      <Link key={sr.id} to={`/service-requests/${sr.id}`} className="p-6 hover:bg-gray-50 transition-colors block">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
                             <h3 className="text-sm text-gray-900">{sr.title}</h3>
@@ -412,17 +304,13 @@ export const Dashboard: React.FC = () => {
                           </div>
                           <StatusBadge status={sr.status} />
                         </div>
-
-                        <div className="text-xs text-gray-500 mt-2">
-                          Type: {sr.type} • Contract: {sr.contractId}
-                        </div>
+                        <div className="text-xs text-gray-500 mt-2">Type: {sr.type} • Contract: {sr.contractId}</div>
                       </Link>
                     ))
                   ) : (
                     <div className="p-6 text-center text-gray-500 text-sm">No open service requests</div>
                   )}
                 </div>
-
                 <div className="p-4 border-t border-gray-200">
                   <Link to="/service-requests" className="text-sm text-blue-600 hover:text-blue-700">
                     View all requests →
@@ -430,20 +318,14 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Recent Offers */}
               <div className="bg-white rounded-lg border border-gray-200">
                 <div className="p-6 border-b border-gray-200">
                   <h2 className="text-lg text-gray-900">Recent Service Offers</h2>
                 </div>
-
                 <div className="divide-y divide-gray-200">
                   {recentOffers.length > 0 ? (
                     recentOffers.map((offer) => (
-                      <Link
-                        key={offer.id}
-                        to={`/service-offers/${offer.id}`}
-                        className="p-6 hover:bg-gray-50 transition-colors block"
-                      >
+                      <Link key={offer.id} to={`/service-offers/${offer.id}`} className="p-6 hover:bg-gray-50 transition-colors block">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
                             <h3 className="text-sm text-gray-900">Offer #{offer.id}</h3>
@@ -451,7 +333,6 @@ export const Dashboard: React.FC = () => {
                           </div>
                           <StatusBadge status={offer.status} />
                         </div>
-
                         <div className="text-xs text-gray-500 mt-2">Provider: {offer.providerId}</div>
                       </Link>
                     ))
@@ -459,7 +340,6 @@ export const Dashboard: React.FC = () => {
                     <div className="p-6 text-center text-gray-500 text-sm">No recent offers</div>
                   )}
                 </div>
-
                 <div className="p-4 border-t border-gray-200">
                   <Link to="/service-offers" className="text-sm text-blue-600 hover:text-blue-700">
                     View all offers →
@@ -474,15 +354,10 @@ export const Dashboard: React.FC = () => {
               <div className="p-6 border-b border-gray-200">
                 <h2 className="text-lg text-gray-900">My Orders</h2>
               </div>
-
               <div className="divide-y divide-gray-200">
                 {myOrdersPreview.length > 0 ? (
                   myOrdersPreview.map((o) => (
-                    <Link
-                      key={o.id}
-                      to={`/service-orders/${o.id}`}
-                      className="p-6 hover:bg-gray-50 transition-colors block"
-                    >
+                    <Link key={o.id} to={`/service-orders/${o.id}`} className="p-6 hover:bg-gray-50 transition-colors block">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
                           <h3 className="text-sm text-gray-900">Order #{o.id}</h3>
@@ -499,7 +374,6 @@ export const Dashboard: React.FC = () => {
                   <div className="p-6 text-center text-gray-500 text-sm">No orders assigned yet</div>
                 )}
               </div>
-
               <div className="p-4 border-t border-gray-200">
                 <Link to="/my-orders" className="text-sm text-blue-600 hover:text-blue-700">
                   View all my orders →
@@ -513,15 +387,10 @@ export const Dashboard: React.FC = () => {
               <div className="p-6 border-b border-gray-200">
                 <h2 className="text-lg text-gray-900">Recent Contracts</h2>
               </div>
-
               <div className="divide-y divide-gray-200">
                 {recentContracts.length > 0 ? (
                   recentContracts.map((c) => (
-                    <Link
-                      key={c.contractId}
-                      to={`/contracts/${c.contractId}`}
-                      className="p-6 hover:bg-gray-50 transition-colors block"
-                    >
+                    <Link key={c.contractId} to={`/contracts/${c.contractId}`} className="p-6 hover:bg-gray-50 transition-colors block">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
                           <h3 className="text-sm text-gray-900">{c.title}</h3>
@@ -536,7 +405,6 @@ export const Dashboard: React.FC = () => {
                   <div className="p-6 text-center text-gray-500 text-sm">No contracts available</div>
                 )}
               </div>
-
               <div className="p-4 border-t border-gray-200">
                 <Link to="/contracts" className="text-sm text-blue-600 hover:text-blue-700">
                   View all contracts →
@@ -551,7 +419,6 @@ export const Dashboard: React.FC = () => {
                 <div className="p-6 border-b border-gray-200">
                   <h2 className="text-lg text-gray-900">Compliance Snapshot</h2>
                 </div>
-
                 <div className="p-6">
                   {provider ? (
                     <>
@@ -565,20 +432,14 @@ export const Dashboard: React.FC = () => {
                             {c.missing.length > 0 ? (
                               <div className="mt-2 text-xs text-gray-500">Missing: {c.missing.join(", ")}</div>
                             ) : (
-                              <div className="mt-2 text-xs text-green-700">
-                                All required provider fields are filled.
-                              </div>
+                              <div className="mt-2 text-xs text-green-700">All required provider fields are filled.</div>
                             )}
                           </>
                         );
                       })()}
                       <div className="mt-4 flex gap-3">
-                        <Link to="/provider" className="text-sm text-blue-600 hover:text-blue-700">
-                          Update provider →
-                        </Link>
-                        <Link to="/activity-log" className="text-sm text-blue-600 hover:text-blue-700">
-                          View activity log →
-                        </Link>
+                        <Link to="/provider" className="text-sm text-blue-600 hover:text-blue-700">Update provider →</Link>
+                        <Link to="/activity-log" className="text-sm text-blue-600 hover:text-blue-700">View activity log →</Link>
                       </div>
                       <div className="mt-3 text-xs text-gray-500">
                         Next: inactive users + role coverage once we add an admin users list endpoint.
@@ -594,7 +455,6 @@ export const Dashboard: React.FC = () => {
                 <div className="p-6 border-b border-gray-200">
                   <h2 className="text-lg text-gray-900">Quick Links</h2>
                 </div>
-
                 <div className="p-6 space-y-3 text-sm">
                   <Link to="/specialists" className="flex items-center gap-2 text-gray-700 hover:text-gray-900">
                     <Users size={18} /> Users
@@ -613,11 +473,7 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
 
-          {!role && (
-            <div className="bg-white border border-gray-200 rounded-lg p-6 text-gray-600">
-              No role found for current user.
-            </div>
-          )}
+          {!role && <div className="bg-white border border-gray-200 rounded-lg p-6 text-gray-600">No role found for current user.</div>}
         </>
       )}
     </div>
