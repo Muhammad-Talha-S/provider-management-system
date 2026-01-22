@@ -1,7 +1,5 @@
-// src/api/auth.ts
 import type { User, Provider } from "../types";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { API_BASE } from "./config";
 
 export type LoginResponse = {
   refresh: string;
@@ -17,7 +15,6 @@ export async function loginRequest(email: string, password: string): Promise<Log
     body: JSON.stringify({ email, password }),
   });
 
-  // Try to parse backend error payload (if any)
   let data: any = null;
   try {
     data = await res.json();

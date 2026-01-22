@@ -1,29 +1,55 @@
-// src/api/serviceRequests.ts
-import type { ServiceRequest } from "../types";
 import { authFetch } from "./http";
 
-/**
- * List all service requests visible to provider
- */
-export async function getServiceRequests(accessToken: string): Promise<ServiceRequest[]> {
-  const res = await authFetch("/api/service-requests/", accessToken, { method: "GET" });
-
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(data?.detail || `Failed to fetch service requests (${res.status})`);
-  }
-  return data as ServiceRequest[];
+async function parseJsonSafe(res: Response) {
+  return await res.json().catch(() => null);
 }
 
-/**
- * Fetch single service request by ID
- */
-export async function getServiceRequestById(accessToken: string, id: string): Promise<ServiceRequest> {
-  const res = await authFetch(`/api/service-requests/${id}/`, accessToken, { method: "GET" });
+function extractError(data: any, fallback: string) {
+  if (!data) return fallback;
+  if (typeof data === "string") return data;
+  if (typeof data.detail === "string") return data.detail;
+  return fallback;
+}
 
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(data?.detail || `Failed to fetch service request (${res.status})`);
-  }
-  return data as ServiceRequest;
+export async function getServiceRequests(access: string): Promise<any[]> {
+  const res = await authFetch("/api/service-requests/", access, { method: "GET" });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) throw new Error(extractError(data, `Failed to fetch service requests (${res.status})`));
+  return data as any[];
+}
+
+export async function getServiceRequestById(access: string, id: string): Promise<any> {
+  const res = await authFetch(`/api/service-requests/${encodeURIComponent(id)}/`, access, { method: "GET" });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) throw new Error(extractError(data, `Failed to fetch service request (${res.status})`));
+  return data as any;
+}
+
+export async function syncServiceRequestsFromGroup3(access: string): Promise<{ upserted: number }> {
+  const res = await authFetch("/api/integrations/group3/sync-service-requests/", access, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) throw new Error(extractError(data, `Failed to sync from Group3 (${res.status})`));
+  return data as { upserted: number };
+}
+
+export async function getSuggestedSpecialists(
+  access: string,
+  requestId: string,
+  opts?: { mode?: "recommended" | "eligible"; limit?: number }
+): Promise<{ specialists: any[]; eligibleCount: number }> {
+  const mode = opts?.mode || "recommended";
+  const limit = opts?.limit ?? 10;
+
+  const res = await authFetch(
+    `/api/service-requests/${encodeURIComponent(requestId)}/suggested-specialists/?mode=${mode}&limit=${limit}`,
+    access,
+    { method: "GET" }
+  );
+
+  const data = await parseJsonSafe(res);
+  if (!res.ok) throw new Error(extractError(data, `Failed to load suggested specialists (${res.status})`));
+  return data as { specialists: any[]; eligibleCount: number };
 }

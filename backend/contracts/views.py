@@ -1,56 +1,48 @@
+import requests
+from django.conf import settings
 from django.db import transaction
+from django.utils.dateparse import parse_date, parse_datetime
 
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from providers.models import Provider
-from .models import Contract, ContractOffer, ContractAward
+from .models import Contract, ContractOffer, ContractProviderStatus
 from .serializers import (
     ContractSerializer,
     ContractOfferSerializer,
     ContractOfferCreateSerializer,
-    Group2AwardContractSerializer,
+    Group2ProviderStatusSerializer,
 )
-from .permissions import CanViewContracts, CanSubmitContractOffer
 from .auth import Group2ApiKeyAuthentication
 from activitylog.utils import log_activity
 
 
+def _can_view_contract(user, contract: Contract) -> bool:
+    # Draft contracts hidden from providers
+    if contract.status == "DRAFT":
+        return False
+    return True
+
 
 class ContractListView(generics.ListAPIView):
     serializer_class = ContractSerializer
-    permission_classes = [IsAuthenticated, CanViewContracts]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user_provider_id = getattr(self.request.user, "provider_id", None)
-
-        open_qs = Contract.objects.filter(status__in=["Published", "In Negotiation"])
-        mine_qs = Contract.objects.filter(
-            status__in=["Awarded", "Active", "Expired"],
-            awarded_provider_id=user_provider_id
-        )
-
-        return (open_qs | mine_qs).exclude(status="Draft").distinct().order_by("-published_at", "-created_at")
+        # All providers see all non-draft contracts (isolation is handled in serializer by not exposing award list)
+        return Contract.objects.exclude(status="DRAFT").order_by("-publishing_date", "-created_at")
 
 
 class ContractDetailView(generics.RetrieveAPIView):
     serializer_class = ContractSerializer
-    permission_classes = [IsAuthenticated, CanViewContracts]
+    permission_classes = [IsAuthenticated]
     lookup_field = "id"
 
     def get_queryset(self):
-        user_provider_id = getattr(self.request.user, "provider_id", None)
-
-        open_qs = Contract.objects.filter(status__in=["Published", "In Negotiation"])
-        mine_qs = Contract.objects.filter(
-            status__in=["Awarded", "Active", "Expired"],
-            awarded_provider_id=user_provider_id,
-        )
-
-        return (open_qs | mine_qs).exclude(status="Draft").distinct()
+        return Contract.objects.exclude(status="DRAFT")
 
 
 class ContractOfferListCreateView(generics.ListCreateAPIView):
@@ -59,21 +51,16 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
     def get_contract(self) -> Contract:
         cid = self.kwargs["id"]
         try:
-            return Contract.objects.exclude(status="Draft").get(id=cid)
+            c = Contract.objects.get(id=cid)
         except Contract.DoesNotExist:
             raise NotFound("Contract not found.")
+        if not _can_view_contract(self.request.user, c):
+            raise NotFound("Contract not found.")
+        return c
 
     def get_queryset(self):
         contract = self.get_contract()
-        return ContractOffer.objects.filter(
-            contract=contract,
-            provider=self.request.user.provider
-        ).order_by("-created_at")
-
-    def get_permissions(self):
-        if self.request.method == "POST":
-            return [IsAuthenticated(), CanSubmitContractOffer()]
-        return [IsAuthenticated(), CanViewContracts()]
+        return ContractOffer.objects.filter(contract=contract, provider=self.request.user.provider).order_by("-created_at")
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -86,18 +73,86 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
         return ctx
 
     def perform_create(self, serializer):
-        # create serializer will create and return the offer
+        user = self.request.user
+        if user.role not in ["Provider Admin", "Contract Coordinator"]:
+            raise PermissionDenied("Only Provider Admin or Contract Coordinator can submit contract offers.")
         serializer.save()
 
 
-class Group2ContractAwardView(APIView):
+class Group2SyncContractsView(APIView):
     """
-    Group2 awards a contract to ONE provider (API-key secured).
-    Transition in one call:
-      Published/In Negotiation/Awarded -> Active
-    Idempotent:
-      - If already awarded to same provider => 200 OK (no change)
-      - If already awarded to a different provider => 409 Conflict
+    Manual pull-sync contracts from Group2.
+    Uses settings.GROUP2_CONTRACTS_URL.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ["Provider Admin", "Contract Coordinator"]:
+            raise PermissionDenied("Not allowed.")
+
+        url = settings.GROUP2_CONTRACTS_URL
+        resp = requests.get(url, timeout=20)
+        if resp.status_code >= 400:
+            return Response({"detail": f"Group2 returned {resp.status_code}"}, status=502)
+
+        data = resp.json()
+        if not isinstance(data, list):
+            return Response({"detail": "Invalid payload from Group2 (expected list)."}, status=502)
+
+        upserted = 0
+        skipped = 0
+
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            kind = (item.get("kind") or "").upper()
+            if kind == "HARDWARE":
+                skipped += 1
+                continue
+
+            cid = item.get("contractId") or item.get("id")
+            if not cid:
+                continue
+
+            publishing_date = parse_date(item.get("publishingDate")) if item.get("publishingDate") else None
+            offer_deadline_at = parse_datetime(item.get("offerDeadlineAt")) if item.get("offerDeadlineAt") else None
+
+            c, _created = Contract.objects.update_or_create(
+                id=str(cid),
+                defaults={
+                    "title": item.get("title") or "",
+                    "kind": kind or "SERVICE",
+                    "status": (item.get("status") or "DRAFT").upper(),
+                    "publishing_date": publishing_date,
+                    "offer_deadline_at": offer_deadline_at,
+                    "stakeholders": item.get("stakeholders"),
+                    "scope_of_work": item.get("scopeOfWork") or "",
+                    "terms_and_conditions": item.get("termsAndConditions") or "",
+                    "weighting": item.get("weighting"),
+                    "config": item.get("allowedConfiguration"),
+                    "versions_and_documents": item.get("versionsAndDocuments"),
+                    "external_snapshot": item,
+                },
+            )
+            upserted += 1
+
+        log_activity(
+            provider_id=request.user.provider_id,
+            actor_type="USER",
+            actor_user=request.user,
+            event_type="GROUP2_SYNC_CONTRACTS",
+            entity_type="Contract",
+            entity_id="*",
+            message=f"Synced contracts from Group2: upserted={upserted}, skipped={skipped}",
+        )
+        return Response({"upserted": upserted, "skipped": skipped})
+
+
+class Group2SetProviderStatusView(APIView):
+    """
+    Group2 informs the provider-specific contract status:
+      IN_NEGOTIATION | ACTIVE | EXPIRED
     """
     authentication_classes = [Group2ApiKeyAuthentication]
     permission_classes = [AllowAny]
@@ -109,74 +164,33 @@ class Group2ContractAwardView(APIView):
         except Contract.DoesNotExist:
             raise NotFound("Contract not found.")
 
-        ser = Group2AwardContractSerializer(data=request.data)
+        ser = Group2ProviderStatusSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
         provider_id = ser.validated_data["providerId"]
-        note = ser.validated_data.get("note", "")
+        status_value = ser.validated_data["status"]
+        note = ser.validated_data.get("note") or ""
 
-        try:
-            provider = Provider.objects.get(id=provider_id)
-        except Provider.DoesNotExist:
-            raise NotFound("Provider not found.")
-
-        # Guardrails
-        if contract.status == "Draft":
-            return Response({"detail": "Cannot award a Draft contract."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # If already awarded, be strict & safe
-        existing_award = getattr(contract, "award", None)
-        if existing_award:
-            if existing_award.provider_id != provider.id:
-                return Response(
-                    {
-                        "detail": "Contract already awarded to a different provider.",
-                        "awardedProviderId": existing_award.provider_id,
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
-            # Same provider => idempotent OK
-            if contract.status != "Active":
-                contract.status = "Active"
-                contract.awarded_provider = provider
-                contract.save(update_fields=["status", "awarded_provider"])
-
-            return Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
-
-        # Optional: restrict which states can be awarded (recommended for demo clarity)
-        if contract.status not in ["Published", "In Negotiation"]:
-            return Response(
-                {"detail": f"Cannot award contract in status '{contract.status}'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Create award record
-        award = ContractAward.objects.create(
+        cps, _ = ContractProviderStatus.objects.update_or_create(
             contract=contract,
-            provider=provider,
-            created_by_system=True,
-            note=note,
+            provider_id=provider_id,
+            defaults={"status": status_value, "note": note},
         )
 
-        # Update contract in ONE transition
-        contract.awarded_provider = provider
-        contract.status = "Active"
-        contract.save(update_fields=["awarded_provider", "status"])
+        # Optional: if any provider is ACTIVE, set contract overall to ACTIVE (safe default)
+        if status_value == "ACTIVE" and contract.status in ["PUBLISHED", "IN_NEGOTIATION"]:
+            contract.status = "ACTIVE"
+            contract.save(update_fields=["status"])
 
-        # ✅ SAFE activity log (only the awarded provider will see it)
         log_activity(
-            provider_id=provider.id,
+            provider_id=provider_id,
             actor_type="GROUP2_SYSTEM",
             actor_user=None,
-            event_type="CONTRACT_AWARDED",
+            event_type="CONTRACT_PROVIDER_STATUS",
             entity_type="Contract",
             entity_id=contract.id,
-            message=f"Contract {contract.id} awarded to provider {provider.id}",
-            metadata={
-                "contractId": contract.id,
-                "providerId": provider.id,
-                "awardId": award.id,
-            },
+            message=f"Group2 set provider status for contract {contract.id}: {provider_id} -> {status_value}",
+            metadata={"providerId": provider_id, "status": status_value},
         )
 
-        return Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+        return Response({"contractId": contract.id, "providerId": provider_id, "status": cps.status})

@@ -137,12 +137,12 @@ export const UserProfile: React.FC = () => {
       // 2) patch user profile fields
       const patch: Partial<User> = {
         status: statusDraft,
-        materialNumber: materialNumberDraft || null,
-        experienceLevel: experienceDraft || null,
-        technologyLevel: techDraft || null,
-        performanceGrade: gradeDraft || null,
-        averageDailyRate: rateDraft === "" ? null : (rateDraft as number),
-        availability: availabilityDraft || null,
+        materialNumber: materialNumberDraft || undefined,
+        experienceLevel: (experienceDraft as any) || undefined,
+        technologyLevel: (techDraft as any) || undefined,
+        performanceGrade: (gradeDraft as any) || undefined,
+        averageDailyRate: rateDraft === "" ? undefined : Number(rateDraft),
+        availability: (availabilityDraft as any) || undefined,
         skills: skillsDraft
           ? skillsDraft
               .split(",")

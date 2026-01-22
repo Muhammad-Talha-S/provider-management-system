@@ -3,47 +3,55 @@ from django.conf import settings
 
 
 class ServiceRequest(models.Model):
-    STATUS_CHOICES = [("Open", "Open"), ("Closed", "Closed")]
-    TYPE_CHOICES = [
-        ("Single", "Single"),
-        ("Multi", "Multi"),
-        ("Team", "Team"),
-        ("Work Contract", "Work Contract"),
-    ]
+    """
+    Pulled from Group3.
+    We store:
+      - id = requestNumber
+      - external_payload = raw Group3 payload
+      - contract_id (hardcoded C003 for now in upsert)
+    """
 
-    id = models.CharField(primary_key=True, max_length=20)  # e.g. SR001
-    title = models.CharField(max_length=255)
+    id = models.CharField(primary_key=True, max_length=50)  # requestNumber, e.g. SR-000024
+    external_id = models.IntegerField(null=True, blank=True)
 
-    type = models.CharField(max_length=30, choices=TYPE_CHOICES, default="Single")
+    request_number = models.CharField(max_length=50, blank=True, default="")
+    title = models.CharField(max_length=255, blank=True, default="")
 
-    # Milestone 4: SR must reference a contract id (from contracts.Contract)
-    linked_contract_id = models.CharField(max_length=20)
+    type = models.CharField(max_length=30, blank=True, default="SINGLE")  # SINGLE|MULTI|TEAM|WORK_CONTRACT
+    status = models.CharField(max_length=50, blank=True, default="DRAFT")
 
-    # Milestone 5: computed from contract.allowed_request_configs[type].offerDeadlineDays
-    offer_deadline_at = models.DateTimeField(null=True, blank=True)
+    contract_id = models.CharField(max_length=50, blank=True, default="")
+    contract_supplier = models.CharField(max_length=255, blank=True, default="")
 
-    # Milestone 5: store cycles from contract.allowed_request_configs[type].cycles
-    cycles = models.PositiveSmallIntegerField(null=True, blank=True)
+    project_id = models.CharField(max_length=50, blank=True, default="")
+    project_name = models.CharField(max_length=255, blank=True, default="")
 
-    role = models.CharField(max_length=120)
-    technology = models.CharField(max_length=255, blank=True, default="")
-    experience_level = models.CharField(max_length=50, blank=True, default="")
+    requested_by_username = models.CharField(max_length=255, blank=True, default="")
+    requested_by_role = models.CharField(max_length=50, blank=True, default="")
 
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
 
-    total_man_days = models.PositiveIntegerField(default=0)
-    onsite_days = models.PositiveIntegerField(default=0)
+    performance_location = models.CharField(max_length=50, blank=True, default="Onsite")
 
-    performance_location = models.CharField(max_length=50, blank=True, default="Onshore")
+    max_offers = models.IntegerField(null=True, blank=True)
+    max_accepted_offers = models.IntegerField(null=True, blank=True)
 
     required_languages = models.JSONField(default=list, blank=True)
     must_have_criteria = models.JSONField(default=list, blank=True)
     nice_to_have_criteria = models.JSONField(default=list, blank=True)
 
     task_description = models.TextField(blank=True, default="")
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Open")
+    further_information = models.TextField(blank=True, default="")
 
+    roles = models.JSONField(default=list, blank=True)
+
+    bidding_cycle_days = models.IntegerField(null=True, blank=True)
+    bidding_start_at = models.DateTimeField(null=True, blank=True)
+    bidding_end_at = models.DateTimeField(null=True, blank=True)
+    bidding_active = models.BooleanField(null=True, blank=True)
+
+    external_payload = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -51,131 +59,104 @@ class ServiceRequest(models.Model):
 
 
 class ServiceOffer(models.Model):
+    """
+    Offer supports lifecycle:
+    DRAFT -> SUBMITTED -> ACCEPTED / REJECTED
+
+    We store:
+      - serviceRequest snapshot (optional)
+      - specialists[] and commercial fields as JSON (response)
+    """
     STATUS_CHOICES = [
-        ("Draft", "Draft"),
-        ("Submitted", "Submitted"),
-        ("Withdrawn", "Withdrawn"),
-        ("Accepted", "Accepted"),
-        ("Rejected", "Rejected"),
+        ("DRAFT", "DRAFT"),
+        ("SUBMITTED", "SUBMITTED"),
+        ("ACCEPTED", "ACCEPTED"),
+        ("REJECTED", "REJECTED"),
     ]
-    REL_CHOICES = [("Employee", "Employee"), ("Freelancer", "Freelancer"), ("Subcontractor", "Subcontractor")]
 
     id = models.AutoField(primary_key=True)
 
     service_request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name="offers")
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="service_offers")
 
-    specialist = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="service_offers_as_specialist",
-        limit_choices_to={"role": "Specialist"},
-    )
-
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         related_name="service_offers_created",
     )
+    # snapshot of SR at time of offer (optional)
+    request_snapshot = models.JSONField(null=True, blank=True)
 
-    daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
-    travel_cost_per_onsite_day = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    # main offer payload (we will store specialists[], totalCost, supplierName, etc here)
+    response = models.JSONField(null=True, blank=True)
 
-    contractual_relationship = models.CharField(max_length=30, choices=REL_CHOICES, default="Employee")
-    subcontractor_company = models.CharField(max_length=255, null=True, blank=True)
-
-    must_have_match_percentage = models.PositiveIntegerField(null=True, blank=True)
-    nice_to_have_match_percentage = models.PositiveIntegerField(null=True, blank=True)
-
-    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="Draft")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="DRAFT")
     submitted_at = models.DateTimeField(null=True, blank=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Group3 tracking (optional but useful)
+    group3_last_status = models.IntegerField(null=True, blank=True)
+    group3_last_response = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"Offer {self.id} for {self.service_request_id}"
 
 
 class ServiceOrder(models.Model):
-    STATUS_CHOICES = [("Active", "Active"), ("Completed", "Completed")]
+    """
+    Created when Group3 ACCEPTS an offer.
+    One order can have multiple specialists via ServiceOrderAssignment.
+    """
+
+    STATUS_CHOICES = [("ACTIVE", "ACTIVE"), ("COMPLETED", "COMPLETED")]
 
     id = models.AutoField(primary_key=True)
 
     service_offer = models.OneToOneField(ServiceOffer, on_delete=models.CASCADE, related_name="service_order")
     service_request = models.ForeignKey(ServiceRequest, on_delete=models.PROTECT, related_name="service_orders")
-
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="service_orders")
-    specialist = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="service_orders_as_specialist",
-        limit_choices_to={"role": "Specialist"},
-    )
 
-    title = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, blank=True, default="")
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
-    location = models.CharField(max_length=50, blank=True, default="Onshore")
-    man_days = models.PositiveIntegerField(default=0)
+    location = models.CharField(max_length=50, blank=True, default="Onsite")
 
+    man_days = models.IntegerField(default=0)  # optional summary
     total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Active")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="ACTIVE")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Order {self.id} ({self.provider_id})"
 
 
-class ServiceOrderChangeRequest(models.Model):
-    TYPE_CHOICES = [("Extension", "Extension"), ("Substitution", "Substitution")]
-    STATUS_CHOICES = [("Requested", "Requested"), ("Approved", "Approved"), ("Declined", "Declined")]
+class ServiceOrderAssignment(models.Model):
+    """
+    Links a ServiceOrder to one or more specialists.
+    FIXES: do NOT define both specialist and specialist_id (your current error).
+    """
 
-    id = models.AutoField(primary_key=True)
-    service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="change_requests")
-    provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="service_order_change_requests")
-
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Requested")
-
-    created_by_system = models.BooleanField(default=False)
-    created_by_user = models.ForeignKey(
+    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="assignments")
+    specialist = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name="service_order_change_requests_created"
+        on_delete=models.PROTECT,
+        related_name="service_order_assignments",
     )
-    decided_by_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name="service_order_change_requests_decided"
-    )
+
+    daily_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    travelling_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    specialist_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    match_must_have_criteria = models.BooleanField(default=True)
+    match_nice_to_have_criteria = models.BooleanField(default=True)
+    match_language_skills = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
-    decided_at = models.DateTimeField(null=True, blank=True)
 
-    reason = models.TextField(blank=True, default="")
-    provider_response_note = models.TextField(blank=True, default="")
-
-    new_end_date = models.DateField(null=True, blank=True)
-    additional_man_days = models.PositiveIntegerField(null=True, blank=True)
-    new_total_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-
-    old_specialist = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name="service_order_change_requests_old_specialist",
-    )
-    new_specialist = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name="service_order_change_requests_new_specialist",
-    )
+    class Meta:
+        unique_together = ("order", "specialist")
 
     def __str__(self):
-        return f"ChangeRequest {self.id} ({self.type}) for Order {self.service_order_id}"
+        return f"Assignment Order={self.order_id} Specialist={self.specialist_id}"

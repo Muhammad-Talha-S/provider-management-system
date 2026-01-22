@@ -42,5 +42,57 @@
         "biddingStartAt": "2026-01-13T02:10:23.781090Z",
         "biddingEndAt": "2026-01-16T02:10:23.781090Z",
         "biddingActive": true
+    },
+    {
+        "id": 29,
+        "requestNumber": "SR-L63YXR27",
+        "title": "Cloud Monitoring and Automation Platform",
+        "type": "MULTI",
+        "requestedByUsername": "Bidhan",
+        "requestedByRole": "PROJECT_MANAGER",
+        "projectId": "PRJ-CJS023",
+        "projectName": "Cloud Monitoring and Automation Platform",
+        "contractId": "23",
+        "contractSupplier": "Meta",
+        "startDate": "2026-01-15",
+        "endDate": "2027-06-07",
+        "performanceLocation": "Onsite ",
+        "maxOffers": 1,
+        "maxAcceptedOffers": 1,
+        "requiredLanguages": [
+            "German"
+        ],
+        "mustHaveCriteria": [
+            "From Berlin"
+        ],
+        "niceToHaveCriteria": [
+            "Speak English"
+        ],
+        "taskDescription": "Design and implement a centralized cloud monitoring and automation platform for Azure-based infrastructure. The solution will provide real-time monitoring, alerting, automated scaling, cost optimization, and self-healing capabilities to improve system reliability and operational efficiency.",
+        "furtherInformation": "Skills: Cloud Operations, Automation, Node.js, Python, Docker, MongoDB, Kubernetes, PostgreSQL, CI/CD",
+        "status": "DRAFT",
+        "preferredOfferId": null,
+        "roles": [
+            {
+                "domain": "XR Technology",
+                "roleName": "Backend Engineer",
+                "technology": "Node.js",
+                "experienceLevel": "Mid",
+                "manDays": 1,
+                "onsiteDays": 1
+            },
+            {
+                "domain": "XR Technology",
+                "roleName": "UX Designer",
+                "technology": "Figma",
+                "experienceLevel": "Senior",
+                "manDays": 1,
+                "onsiteDays": 1
+            }
+        ],
+        "biddingCycleDays": 1,
+        "biddingStartAt": null,
+        "biddingEndAt": null,
+        "biddingActive": null
     }
 ]

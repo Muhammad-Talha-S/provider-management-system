@@ -1,130 +1,123 @@
+// src/pages/CreateServiceOffer.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
-  Calendar,
-  MapPin,
-  CheckCircle,
-  Star,
-  Languages,
   AlertCircle,
-  FileText,
-  Clock,
   RefreshCw,
+  Users,
+  Plus,
+  CheckCircle2,
 } from "lucide-react";
+
 import { StatusBadge } from "../components/StatusBadge";
 import { useApp } from "../context/AppContext";
 
-import type { ServiceRequest, Specialist } from "../types";
-import { getServiceRequestById } from "../api/serviceRequests";
-import { getSpecialists } from "../api/specialists";
+import type { ServiceRequest, Group3RoleRequirement, Specialist } from "../types";
+import { getServiceRequestById, getSuggestedSpecialists } from "../api/serviceRequests";
 import { createServiceOffer } from "../api/serviceOffers";
 
-function parseDeadline(deadline?: string | null): Date | null {
-  if (!deadline) return null;
-  const d = new Date(deadline);
-  return Number.isNaN(d.getTime()) ? null : d;
+type SelectedLine = {
+  specialistId: string;
+  specialistName: string;
+  materialNumber: string;
+  roleIndex: number; // maps to request.roles[index]
+  dailyRate: number;
+  travellingCost: number;
+  contractualRelationship: "Employee" | "Freelancer" | "Subcontractor";
+  subcontractorCompany?: string;
+
+  matchMustHaveCriteria: boolean;
+  matchNiceToHaveCriteria: boolean;
+  matchLanguageSkills: boolean;
+};
+
+function safeArray<T>(v: T[] | null | undefined): T[] {
+  return Array.isArray(v) ? v : [];
 }
 
-function formatDeadline(deadline?: string | null): string {
-  const d = parseDeadline(deadline);
-  if (!d) return "-";
-  return d.toLocaleString();
+function isExpired(iso?: string | null) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
 }
 
-function getCountdown(deadline?: string | null): { isExpired: boolean; label: string } {
-  const d = parseDeadline(deadline);
-  if (!d) return { isExpired: false, label: "No deadline configured" };
+function srIsBiddable(sr: any): { ok: boolean; reason?: string } {
+  const status = String(sr?.status || "").toUpperCase();
+  const active = sr?.biddingActive;
+  const end = sr?.biddingEndAt;
 
-  const diffMs = d.getTime() - Date.now();
-  if (diffMs <= 0) return { isExpired: true, label: "Expired" };
+  if (!active) return { ok: false, reason: "Bidding is not active for this request." };
+  if (end && isExpired(end)) return { ok: false, reason: "Bidding deadline has passed." };
 
-  const totalMinutes = Math.floor(diffMs / (1000 * 60));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const mins = totalMinutes % 60;
-
-  if (days > 0) return { isExpired: false, label: `${days}d ${hours}h left` };
-  if (hours > 0) return { isExpired: false, label: `${hours}h ${mins}m left` };
-  return { isExpired: false, label: `${mins}m left` };
+  // Group3 sample uses APPROVED_FOR_BIDDING
+  if (status && status !== "APPROVED_FOR_BIDDING") {
+    return { ok: false, reason: `Request is not approved for bidding (status: ${sr?.status}).` };
+  }
+  return { ok: true };
 }
 
-function normalizeApiErrorMessage(e: any): string {
-  // DRF errors commonly come as {detail: "..."} or field errors
-  const msg = e?.message || "";
+function defaultRoleIndexForAdd(request: ServiceRequest, selected: SelectedLine[]) {
+  const roles = safeArray(request.roles);
+  if (!roles.length) return 0;
 
-  // Friendly mapping for your milestone rules
-  const lower = msg.toLowerCase();
-  if (lower.includes("deadline") && (lower.includes("passed") || lower.includes("expired"))) {
-    return "Offer deadline has passed. You can no longer submit offers for this request.";
-  }
-  if (lower.includes("not allowed") && lower.includes("award")) {
-    return "Your provider is not eligible for this request (contract not awarded to your provider).";
-  }
-  if (lower.includes("not allowed") && (lower.includes("type") || lower.includes("request type"))) {
-    return "This request type is not allowed by the contract configuration.";
-  }
-  if (lower.includes("closed")) {
-    return "This service request is closed and no longer accepting offers.";
-  }
+  if (request.type === "SINGLE") return 0;
+  if (request.type === "MULTI") return 0;
 
-  return msg || "Failed to create offer";
+  // TEAM: try to fill first missing role
+  const used = new Set(selected.map((s) => s.roleIndex));
+  for (let i = 0; i < roles.length; i++) {
+    if (!used.has(i)) return i;
+  }
+  return 0;
 }
 
 export const CreateServiceOffer: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { currentProvider, tokens } = useApp();
+  const { tokens, currentProvider, currentUser } = useApp();
 
   const requestId = searchParams.get("requestId") || "";
+  const access = tokens?.access || "";
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const [request, setRequest] = useState<ServiceRequest | null>(null);
-  const [specialists, setSpecialists] = useState<Specialist[]>([]);
 
-  const [selectedSpecialistId, setSelectedSpecialistId] = useState<string>("");
-  const [dailyRate, setDailyRate] = useState<string>("");
-  const [travelCost, setTravelCost] = useState<string>("50");
-  const [contractualRelationship, setContractualRelationship] =
-    useState<"Employee" | "Freelancer" | "Subcontractor">("Employee");
-  const [subcontractorCompany, setSubcontractorCompany] = useState<string>("");
-  const [mustHaveMatch, setMustHaveMatch] = useState<string>("");
-  const [niceToHaveMatch, setNiceToHaveMatch] = useState<string>("");
+  const [recommended, setRecommended] = useState<Specialist[]>([]);
+  const [eligibleCount, setEligibleCount] = useState<number>(0);
+
+  const [showEligible, setShowEligible] = useState(false);
+  const [eligible, setEligible] = useState<Specialist[]>([]);
+
+  const [selected, setSelected] = useState<SelectedLine[]>([]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const access = tokens?.access || "";
+  const roles: Group3RoleRequirement[] = useMemo(() => safeArray(request?.roles), [request?.roles]);
 
-  const deadlineInfo = useMemo(() => getCountdown(request?.offerDeadlineAt), [request?.offerDeadlineAt]);
-  const isOpen = request?.status === "Open";
-  const isDeadlineExpired = deadlineInfo.isExpired;
-
-  const hardBlockedReason = useMemo(() => {
-    if (!request) return null;
-    if (!isOpen) return "This service request is closed and no longer accepting offers.";
-    if (isDeadlineExpired) return "Offer deadline has passed. You can no longer submit offers for this request.";
-    return null;
-  }, [request, isOpen, isDeadlineExpired]);
+  const biddable = useMemo(() => (request ? srIsBiddable(request) : { ok: false, reason: "Request not loaded" }), [request]);
 
   const refresh = async () => {
     if (!access || !requestId) return;
     setLoading(true);
     setErr(null);
+
     try {
       const sr = await getServiceRequestById(access, requestId);
       setRequest(sr);
 
-      const sp = await getSpecialists(access);
-      // keep only current provider specialists + not fully booked
-      const filtered = sp.filter(
-        (s: any) =>
-          s.providerId === currentProvider?.id &&
-          (s.availability || "") !== "Fully Booked"
-      );
-      setSpecialists(filtered);
+      const rec = await getSuggestedSpecialists(access, requestId, { mode: "recommended", limit: 10 });
+      setRecommended(rec.specialists as any);
+      setEligibleCount(rec.eligibleCount);
+
+      setShowEligible(false);
+      setEligible([]);
+      setSelected([]);
+      setSubmitError(null);
     } catch (e: any) {
       setErr(e?.message || "Failed to load data");
     } finally {
@@ -135,73 +128,144 @@ export const CreateServiceOffer: React.FC = () => {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access, requestId, currentProvider?.id]);
+  }, [access, requestId]);
 
-  const selectedSpecialist = useMemo(
-    () => specialists.find((s) => s.id === selectedSpecialistId),
-    [specialists, selectedSpecialistId]
-  );
+  const fetchEligible = async () => {
+    if (!access || !requestId) return;
+    const res = await getSuggestedSpecialists(access, requestId, { mode: "eligible", limit: 1000 });
+    setEligible(res.specialists as any);
+    setShowEligible(true);
+  };
+
+  const addSpecialist = (s: Specialist) => {
+    if (!request) return;
+
+    // SINGLE: only 1
+    if (request.type === "SINGLE" && selected.length >= 1) return;
+
+    // avoid duplicate
+    if (selected.some((x) => x.specialistId === s.id)) return;
+
+    const roleIndex = defaultRoleIndexForAdd(request, selected);
+
+    const line: SelectedLine = {
+      specialistId: s.id,
+      specialistName: s.name,
+      materialNumber: s.materialNumber || "",
+      roleIndex,
+      dailyRate: Number(s.averageDailyRate || 0),
+      travellingCost: 50,
+      contractualRelationship: "Employee",
+      subcontractorCompany: "",
+      matchMustHaveCriteria: true,
+      matchNiceToHaveCriteria: true,
+      matchLanguageSkills: true,
+    };
+
+    const next = [...selected, line];
+
+    // MULTI: enforce all same roleIndex
+    if (request.type === "MULTI") {
+      const fixedRole = next[0]?.roleIndex ?? 0;
+      next.forEach((n) => (n.roleIndex = fixedRole));
+    }
+
+    setSelected(next);
+  };
+
+  const removeSpecialist = (id: string) => {
+    setSelected((prev) => prev.filter((x) => x.specialistId !== id));
+  };
+
+  const updateLine = (id: string, patch: Partial<SelectedLine>) => {
+    setSelected((prev) =>
+      prev.map((x) => (x.specialistId === id ? { ...x, ...patch } : x))
+    );
+  };
 
   const totalCost = useMemo(() => {
     if (!request) return 0;
-    const rate = parseFloat(dailyRate || "0") || 0;
-    const travel = parseFloat(travelCost || "0") || 0;
-    return rate * (request.totalManDays || 0) + travel * (request.onsiteDays || 0);
-  }, [dailyRate, travelCost, request]);
+    const rs = roles;
+    if (!rs.length) return 0;
 
-  const checkBasicValidity = () => {
-    if (!request) return { ok: false, msg: "Request missing" };
-    if (hardBlockedReason) return { ok: false, msg: hardBlockedReason };
+    return selected.reduce((sum, line) => {
+      const r = rs[line.roleIndex] || rs[0];
+      const manDays = Number((r as any).manDays ?? 0);
+      const onsiteDays = Number((r as any).onsiteDays ?? 0);
+      const part = Number(line.dailyRate || 0) * manDays + Number(line.travellingCost || 0) * onsiteDays;
+      return sum + part;
+    }, 0);
+  }, [selected, roles, request]);
 
-    if (!selectedSpecialistId) return { ok: false, msg: "Select a specialist" };
-    if (!dailyRate) return { ok: false, msg: "Enter daily rate" };
-    if (contractualRelationship === "Subcontractor" && !subcontractorCompany.trim())
-      return { ok: false, msg: "Subcontractor company is required" };
+  const validate = (): { ok: boolean; msg?: string } => {
+    if (!request) return { ok: false, msg: "Request not loaded" };
+    if (!biddable.ok) return { ok: false, msg: biddable.reason || "Not biddable" };
 
-    // Optional: validate percentages in range (when provided)
-    const mh = mustHaveMatch ? Number(mustHaveMatch) : null;
-    const nh = niceToHaveMatch ? Number(niceToHaveMatch) : null;
-    if (mh != null && (mh < 0 || mh > 100)) return { ok: false, msg: "Must-Have Match must be between 0 and 100" };
-    if (nh != null && (nh < 0 || nh > 100)) return { ok: false, msg: "Nice-to-Have Match must be between 0 and 100" };
+    if (request.type === "SINGLE") {
+      if (selected.length !== 1) return { ok: false, msg: "SINGLE request requires exactly 1 specialist." };
+    }
+    if (request.type === "MULTI") {
+      if (selected.length < 1) return { ok: false, msg: "MULTI request requires at least 1 specialist." };
+      const roleIdx = selected[0].roleIndex;
+      if (selected.some((x) => x.roleIndex !== roleIdx)) return { ok: false, msg: "MULTI request: all selected specialists must be the same role." };
+    }
+    if (request.type === "TEAM") {
+      if (selected.length < 1) return { ok: false, msg: "TEAM request requires selecting specialists for roles." };
+      // Soft rule: try to cover each role at least once if roles exist
+      if (roles.length > 0) {
+        const covered = new Set(selected.map((x) => x.roleIndex));
+        if (covered.size < Math.min(roles.length, covered.size + (roles.length - covered.size))) {
+          // do not hard block; just allow
+        }
+      }
+    }
 
-    return { ok: true, msg: "" };
+    for (const line of selected) {
+      if (!line.dailyRate || line.dailyRate <= 0) return { ok: false, msg: "Daily rate must be > 0 for all selected specialists." };
+      if (line.contractualRelationship === "Subcontractor" && !String(line.subcontractorCompany || "").trim()) {
+        return { ok: false, msg: "Subcontractor company is required when contractual relationship is Subcontractor." };
+      }
+    }
+
+    return { ok: true };
   };
 
   const handleSubmit = async (asDraft: boolean) => {
     setSubmitError(null);
-
-    const v = checkBasicValidity();
+    const v = validate();
     if (!v.ok) {
-      setSubmitError(v.msg);
+      setSubmitError(v.msg || "Invalid input");
       return;
     }
 
-    if (!asDraft && (!mustHaveMatch || !niceToHaveMatch)) {
-      setSubmitError("For submission, please fill Must-Have Match and Nice-to-Have Match (%)");
+    if (!access || !request) {
+      setSubmitError("Not authenticated");
       return;
     }
 
     try {
-      if (!access || !request) throw new Error("Not authenticated");
-
       setSubmitting(true);
 
       await createServiceOffer(access, {
         serviceRequestId: request.id,
-        specialistId: selectedSpecialistId,
-        daily_rate: parseFloat(dailyRate),
-        travelCostPerOnsiteDay: parseFloat(travelCost || "0") || 0,
-        total_cost: totalCost,
-        contractualRelationship,
-        subcontractorCompany: contractualRelationship === "Subcontractor" ? subcontractorCompany : null,
-        mustHaveMatchPercentage: asDraft ? null : parseInt(mustHaveMatch, 10),
-        niceToHaveMatchPercentage: asDraft ? null : parseInt(niceToHaveMatch, 10),
-        status: asDraft ? "Draft" : "Submitted",
+        offerStatus: asDraft ? "DRAFT" : "SUBMITTED",
+        supplierName: currentProvider?.name || "",
+        supplierRepresentative: currentUser?.name || "",
+        contractualRelationship: selected[0]?.contractualRelationship || "",
+        subcontractorCompany: selected[0]?.subcontractorCompany || "",
+        specialists: selected.map((line) => ({
+          userId: line.specialistId,
+          dailyRate: Number(line.dailyRate || 0),
+          travellingCost: Number(line.travellingCost || 0),
+          matchMustHaveCriteria: !!line.matchMustHaveCriteria,
+          matchNiceToHaveCriteria: !!line.matchNiceToHaveCriteria,
+          matchLanguageSkills: !!line.matchLanguageSkills,
+        })),
       });
 
       navigate("/service-offers");
     } catch (e: any) {
-      setSubmitError(normalizeApiErrorMessage(e));
+      setSubmitError(e?.message || "Failed to create offer");
     } finally {
       setSubmitting(false);
     }
@@ -223,19 +287,8 @@ export const CreateServiceOffer: React.FC = () => {
     );
   }
 
-  const canSubmitOffer =
-    !!selectedSpecialistId &&
-    !!dailyRate &&
-    !!mustHaveMatch &&
-    !!niceToHaveMatch &&
-    !hardBlockedReason &&
-    !submitting;
-
-  const canSaveDraft =
-    !!selectedSpecialistId &&
-    !!dailyRate &&
-    !hardBlockedReason &&
-    !submitting;
+  const canSaveDraft = selected.length > 0 && biddable.ok && !submitting;
+  const canSubmit = selected.length > 0 && biddable.ok && !submitting;
 
   return (
     <div className="p-8">
@@ -252,13 +305,15 @@ export const CreateServiceOffer: React.FC = () => {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl text-gray-900">Create Service Offer</h1>
-            <p className="text-gray-500 mt-1">Respond to Service Request: {request.id}</p>
+            <p className="text-gray-500 mt-1">
+              Respond to: <span className="font-mono">{request.id}</span> • Type: <strong>{request.type}</strong>
+            </p>
           </div>
 
           <button
             onClick={refresh}
             className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-            title="Refresh request rules/deadline"
+            title="Refresh request + suggestions"
           >
             <RefreshCw size={16} />
             Refresh
@@ -266,21 +321,20 @@ export const CreateServiceOffer: React.FC = () => {
         </div>
       </div>
 
-      {/* Blocking banner (Milestone 5 UX) */}
-      {hardBlockedReason && (
+      {/* Block banner */}
+      {!biddable.ok && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertCircle size={20} className="text-red-600 mt-0.5" />
             <div>
               <div className="text-sm text-red-900 font-medium">Offer creation blocked</div>
-              <div className="text-sm text-red-700 mt-1">{hardBlockedReason}</div>
+              <div className="text-sm text-red-700 mt-1">{biddable.reason}</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* API submit error banner */}
-      {submitError && !hardBlockedReason && (
+      {submitError && (
         <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertCircle size={20} className="text-yellow-700 mt-0.5" />
@@ -293,183 +347,50 @@ export const CreateServiceOffer: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column */}
+        {/* Left */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Request Summary */}
+          {/* SR Summary */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-lg text-gray-900">{request.title}</h2>
-                <p className="text-sm text-gray-500 mt-1">{request.id}</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Contract: <span className="font-mono">{request.contractId}</span>
+                </p>
               </div>
               <StatusBadge status={request.status} />
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <label className="text-xs text-gray-500">Role</label>
-                <p className="text-gray-900 mt-1">{request.role}</p>
+                <label className="text-xs text-gray-500">Bidding End</label>
+                <p className="text-gray-900 mt-1">{request.biddingEndAt || "-"}</p>
               </div>
               <div>
-                <label className="text-xs text-gray-500">Technology</label>
-                <p className="text-gray-900 mt-1">{request.technology}</p>
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500">Offer Deadline</label>
-                <div className="mt-1">
-                  <div className="text-sm text-gray-900">{formatDeadline(request.offerDeadlineAt)}</div>
-                  <div className={`text-xs mt-1 inline-flex items-center gap-1 ${deadlineInfo.isExpired ? "text-red-600" : "text-gray-500"}`}>
-                    <Clock size={12} className={deadlineInfo.isExpired ? "text-red-500" : "text-gray-400"} />
-                    {deadlineInfo.label}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500">Cycles</label>
-                <p className="text-gray-900 mt-1">{request.cycles ?? "-"}</p>
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500">Experience Level</label>
-                <p className="text-gray-900 mt-1">{request.experienceLevel}</p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Total Man-Days</label>
-                <p className="text-gray-900 mt-1">{request.totalManDays} days</p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Duration</label>
-                <div className="flex items-center gap-1 mt-1">
-                  <Calendar size={14} className="text-gray-400" />
-                  <p className="text-gray-900">
-                    {request.startDate || "-"} - {request.endDate || "-"}
-                  </p>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Location</label>
-                <div className="flex items-center gap-1 mt-1">
-                  <MapPin size={14} className="text-gray-400" />
-                  <p className="text-gray-900">{request.performanceLocation}</p>
-                </div>
+                <label className="text-xs text-gray-500">Languages</label>
+                <p className="text-gray-900 mt-1">{(request.requiredLanguages || []).join(", ") || "-"}</p>
               </div>
             </div>
           </div>
 
-          {/* Requirements */}
+          {/* Roles */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Requirements</h2>
+            <h2 className="text-lg text-gray-900 mb-4 flex items-center gap-2">
+              <Users size={18} className="text-gray-500" />
+              Role Requirements
+            </h2>
 
-            <div className="mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle size={16} className="text-red-500" />
-                <h3 className="text-sm text-gray-900">Must-Have Criteria</h3>
-              </div>
-              <div className="space-y-2">
-                {(request.mustHaveCriteria || []).map((c: any, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-red-50 rounded text-xs">
-                    <span className="text-gray-900">{c.name}</span>
-                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded">{c.weight}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Star size={16} className="text-blue-500" />
-                <h3 className="text-sm text-gray-900">Nice-to-Have Criteria</h3>
-              </div>
-              <div className="space-y-2">
-                {(request.niceToHaveCriteria || []).map((c: any, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-blue-50 rounded text-xs">
-                    <span className="text-gray-900">{c.name}</span>
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">{c.weight}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Languages */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Languages size={16} className="text-gray-400" />
-              <h2 className="text-sm text-gray-900">Language Requirements</h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(request.requiredLanguages || []).map((lang: string, idx: number) => (
-                <span key={idx} className="px-3 py-1 bg-gray-100 text-gray-900 rounded text-sm">
-                  {lang}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Specialist selection */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Select Specialist</h2>
-
-            {specialists.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-                <AlertCircle size={24} className="mx-auto text-yellow-600 mb-2" />
-                <p className="text-sm text-gray-700">No available specialists in your organization</p>
-              </div>
+            {roles.length === 0 ? (
+              <p className="text-sm text-gray-500">No roles provided by Group 3.</p>
             ) : (
               <div className="space-y-3">
-                {specialists.map((s) => (
-                  <div
-                    key={s.id}
-                    onClick={() => {
-                      setSelectedSpecialistId(s.id);
-                      setDailyRate(s.averageDailyRate?.toString() || "");
-                    }}
-                    className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                      selectedSpecialistId === s.id ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
-                          {s.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-900">{s.name}</p>
-                          <p className="text-xs text-gray-500">{s.materialNumber}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${
-                            s.availability === "Available" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                          }`}
-                        >
-                          {s.availability}
-                        </span>
-                      </div>
+                {roles.map((r, idx) => (
+                  <div key={idx} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="text-sm text-gray-900">
+                      <strong>{r.roleName}</strong> • {r.technology} • {r.experienceLevel}
                     </div>
-
-                    <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
-                      <div>
-                        <span className="text-gray-500">Experience</span>
-                        <p className="text-gray-900">{s.experienceLevel}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Technology</span>
-                        <p className="text-gray-900">{s.technologyLevel}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Rate</span>
-                        <p className="text-gray-900">€{s.averageDailyRate}/day</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-2">
-                      <span className="text-xs text-gray-500">Skills: </span>
-                      <span className="text-xs text-gray-900">{(s.skills || []).join(", ")}</span>
+                    <div className="text-xs text-gray-600 mt-1">
+                      Domain: {r.domain} • ManDays: {r.manDays} • OnsiteDays: {r.onsiteDays}
                     </div>
                   </div>
                 ))}
@@ -477,169 +398,253 @@ export const CreateServiceOffer: React.FC = () => {
             )}
           </div>
 
-          {/* Offer form */}
-          {selectedSpecialistId && (
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-lg text-gray-900 mb-4">Offer Details</h2>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-2">
-                      Daily Rate (€) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={dailyRate}
-                      onChange={(e) => setDailyRate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      placeholder="Enter daily rate"
-                      disabled={!!hardBlockedReason}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-2">Travel Cost per Onsite Day (€)</label>
-                    <input
-                      type="number"
-                      value={travelCost}
-                      onChange={(e) => setTravelCost(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      placeholder="Enter travel cost"
-                      disabled={!!hardBlockedReason}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-700 mb-2">
-                    Contractual Relationship <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={contractualRelationship}
-                    onChange={(e) => setContractualRelationship(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    disabled={!!hardBlockedReason}
-                  >
-                    <option value="Employee">Employee</option>
-                    <option value="Freelancer">Freelancer</option>
-                    <option value="Subcontractor">Subcontractor</option>
-                  </select>
-                </div>
-
-                {contractualRelationship === "Subcontractor" && (
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-2">
-                      Subcontractor Company <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={subcontractorCompany}
-                      onChange={(e) => setSubcontractorCompany(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      placeholder="Enter company name"
-                      disabled={!!hardBlockedReason}
-                    />
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-2">
-                      Must-Have Match (%) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={mustHaveMatch}
-                      onChange={(e) => setMustHaveMatch(e.target.value)}
-                      min="0"
-                      max="100"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      placeholder="0-100"
-                      disabled={!!hardBlockedReason}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-2">
-                      Nice-to-Have Match (%) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={niceToHaveMatch}
-                      onChange={(e) => setNiceToHaveMatch(e.target.value)}
-                      min="0"
-                      max="100"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      placeholder="0-100"
-                      disabled={!!hardBlockedReason}
-                    />
-                  </div>
-                </div>
-              </div>
+          {/* Suggested Specialists */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg text-gray-900">Suggested Specialists</h2>
+              <div className="text-xs text-gray-500">Eligible: {eligibleCount}</div>
             </div>
-          )}
+
+            {recommended.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                <AlertCircle size={24} className="mx-auto text-yellow-600 mb-2" />
+                <p className="text-sm text-gray-700">No suggested specialists found.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recommended.map((s: any) => {
+                  const already = selected.some((x) => x.specialistId === s.id);
+                  return (
+                    <div key={s.id} className="p-4 border rounded-lg border-gray-200 hover:border-gray-300">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-sm text-gray-900">{s.name}</div>
+                          <div className="text-xs text-gray-500">{s.materialNumber || ""}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {s.experienceLevel || "-"} • {s.technologyLevel || "-"} • €{s.averageDailyRate || "-"}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => addSpecialist(s)}
+                          disabled={already || (request.type === "SINGLE" && selected.length >= 1)}
+                          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                            already
+                              ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                              : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}
+                        >
+                          <Plus size={16} />
+                          {already ? "Added" : "Add"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-4">
+              {!showEligible ? (
+                <button
+                  type="button"
+                  onClick={fetchEligible}
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  Show more eligible specialists →
+                </button>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <div className="text-sm text-gray-700">Eligible specialists (up to 1000):</div>
+                  <div className="max-h-72 overflow-auto border border-gray-200 rounded-lg">
+                    {eligible.map((s: any) => {
+                      const already = selected.some((x) => x.specialistId === s.id);
+                      return (
+                        <div key={s.id} className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                          <div>
+                            <div className="text-sm text-gray-900">{s.name}</div>
+                            <div className="text-xs text-gray-500">{s.materialNumber || ""}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addSpecialist(s)}
+                            disabled={already || (request.type === "SINGLE" && selected.length >= 1)}
+                            className={`px-3 py-1 rounded text-sm ${
+                              already ? "bg-gray-100 text-gray-500" : "bg-blue-600 text-white hover:bg-blue-700"
+                            }`}
+                          >
+                            {already ? "Added" : "Add"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Selected Specialists */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg text-gray-900 mb-4">Selected Specialists</h2>
+
+            {selected.length === 0 ? (
+              <p className="text-sm text-gray-500">No specialists selected yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {selected.map((line) => {
+                  const r = roles[line.roleIndex] || roles[0];
+                  return (
+                    <div key={line.specialistId} className="p-4 border border-gray-200 rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-sm text-gray-900">{line.specialistName}</div>
+                          <div className="text-xs text-gray-500">{line.materialNumber}</div>
+                          {r && (
+                            <div className="text-xs text-gray-600 mt-1">
+                              Assigned: <strong>{r.roleName}</strong> • {r.technology} • {r.experienceLevel}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeSpecialist(line.specialistId)}
+                          className="text-sm text-red-600 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Role assignment (TEAM only editable) */}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Role Assignment</label>
+                          <select
+                            value={line.roleIndex}
+                            disabled={request.type !== "TEAM" || roles.length === 0}
+                            onChange={(e) => updateLine(line.specialistId, { roleIndex: Number(e.target.value) })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          >
+                            {roles.map((rr, idx) => (
+                              <option key={idx} value={idx}>
+                                {rr.roleName} • {rr.technology} • {rr.experienceLevel}
+                              </option>
+                            ))}
+                          </select>
+                          {request.type === "MULTI" && (
+                            <div className="text-xs text-gray-400 mt-1">MULTI: all specialists share the same role</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Daily Rate (€)</label>
+                          <input
+                            type="number"
+                            value={line.dailyRate}
+                            onChange={(e) => updateLine(line.specialistId, { dailyRate: Number(e.target.value) })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Travelling Cost (€ / onsite day)</label>
+                          <input
+                            type="number"
+                            value={line.travellingCost}
+                            onChange={(e) => updateLine(line.specialistId, { travellingCost: Number(e.target.value) })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={line.matchMustHaveCriteria}
+                            onChange={(e) => updateLine(line.specialistId, { matchMustHaveCriteria: e.target.checked })}
+                          />
+                          <span>Matches Must-Have</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={line.matchNiceToHaveCriteria}
+                            onChange={(e) => updateLine(line.specialistId, { matchNiceToHaveCriteria: e.target.checked })}
+                          />
+                          <span>Matches Nice-to-Have</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={line.matchLanguageSkills}
+                            onChange={(e) => updateLine(line.specialistId, { matchLanguageSkills: e.target.checked })}
+                          />
+                          <span>Matches Language</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Contractual Relationship</label>
+                          <select
+                            value={line.contractualRelationship}
+                            onChange={(e) => updateLine(line.specialistId, { contractualRelationship: e.target.value as any })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          >
+                            <option value="Employee">Employee</option>
+                            <option value="Freelancer">Freelancer</option>
+                            <option value="Subcontractor">Subcontractor</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Subcontractor Company</label>
+                          <input
+                            type="text"
+                            value={line.subcontractorCompany || ""}
+                            onChange={(e) => updateLine(line.specialistId, { subcontractorCompany: e.target.value })}
+                            disabled={line.contractualRelationship !== "Subcontractor"}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            placeholder={line.contractualRelationship === "Subcontractor" ? "Enter company name" : "N/A"}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right column */}
+        {/* Right */}
         <div className="space-y-6">
-          {/* Linked contract quick block */}
-          {!!request.linkedContractId && (
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <FileText size={18} className="text-gray-400" />
-                <h2 className="text-sm text-gray-900">Linked Contract</h2>
+          {/* Total cost */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-sm text-gray-900 mb-4">Cost Summary</h2>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Selected specialists</span>
+                <span className="text-gray-900">{selected.length}</span>
               </div>
 
-              <div className="space-y-2 text-sm">
-                <div>
-                  <label className="text-xs text-gray-500">Contract ID</label>
-                  <p className="text-gray-900 mt-1">{request.linkedContractId}</p>
-                </div>
-                <Link to={`/contracts/${request.linkedContractId}`} className="block text-sm text-blue-600 hover:text-blue-700 mt-2">
-                  View Contract Details →
-                </Link>
+              <div className="border-t border-gray-200 pt-3 flex justify-between">
+                <span className="text-gray-900">Total Cost (Request)</span>
+                <span className="text-gray-900">€{Number(totalCost).toLocaleString()}</span>
               </div>
-            </div>
-          )}
 
-          {/* Cost summary */}
-          {selectedSpecialistId && dailyRate && (
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-sm text-gray-900 mb-4">Cost Summary</h2>
-
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Daily Rate</span>
-                  <span className="text-gray-900">€{dailyRate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Total Man-Days</span>
-                  <span className="text-gray-900">{request.totalManDays}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span className="text-gray-900">
-                    €{(parseFloat(dailyRate || "0") * request.totalManDays).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Onsite Days</span>
-                  <span className="text-gray-900">{request.onsiteDays}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Travel Cost</span>
-                  <span className="text-gray-900">
-                    €{((parseFloat(travelCost || "0") || 0) * request.onsiteDays).toLocaleString()}
-                  </span>
-                </div>
-                <div className="border-t border-gray-200 pt-3 flex justify-between">
-                  <span className="text-gray-900">Total Cost</span>
-                  <span className="text-gray-900">€{totalCost.toLocaleString()}</span>
-                </div>
+              <div className="mt-3 text-xs text-gray-500 flex items-start gap-2">
+                <CheckCircle2 size={14} className="text-green-600 mt-0.5" />
+                One total cost is stored for the whole request (not per specialist).
               </div>
             </div>
-          )}
+          </div>
 
           {/* Actions */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -648,9 +653,9 @@ export const CreateServiceOffer: React.FC = () => {
             <div className="space-y-3">
               <button
                 onClick={() => handleSubmit(false)}
-                disabled={!canSubmitOffer}
+                disabled={!canSubmit}
                 className={`w-full px-4 py-3 rounded-lg transition-colors ${
-                  canSubmitOffer ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  canSubmit ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-300 text-gray-500 cursor-not-allowed"
                 }`}
               >
                 {submitting ? "Submitting..." : "Submit Offer"}
@@ -675,7 +680,7 @@ export const CreateServiceOffer: React.FC = () => {
             </div>
 
             <p className="text-xs text-gray-500 mt-4">
-              <strong>Note:</strong> Submitted offers will be evaluated by Group 3.
+              <strong>Note:</strong> SUBMITTED offers will be sent to Group-3 via PUT and later accepted/rejected.
             </p>
           </div>
         </div>

@@ -1,23 +1,13 @@
-import type { User, Provider } from "../types";
+import { API_BASE } from "./config";
 
-const API_BASE = "http://127.0.0.1:8000";
-
-export type MeResponse = { user: User; provider: Provider };
-
-export async function meRequest(access: string): Promise<MeResponse> {
+export async function meRequest(access: string): Promise<any> {
   const res = await fetch(`${API_BASE}/api/auth/me/`, {
-    headers: {
-      Authorization: `Bearer ${access}`,
-      "Content-Type": "application/json",
-    },
+    method: "GET",
+    headers: { Authorization: `Bearer ${access}` },
   });
-
   const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = data?.detail || `Me request failed (${res.status})`;
-    throw new Error(msg);
-  }
-  return data as MeResponse;
+  if (!res.ok) throw new Error(data?.detail || `Failed /me (${res.status})`);
+  return data;
 }
 
 export async function refreshRequest(refresh: string): Promise<{ access: string }> {
@@ -26,11 +16,7 @@ export async function refreshRequest(refresh: string): Promise<{ access: string 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh }),
   });
-
   const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = data?.detail || `Token refresh failed (${res.status})`;
-    throw new Error(msg);
-  }
+  if (!res.ok) throw new Error(data?.detail || `Failed refresh (${res.status})`);
   return data as { access: string };
 }

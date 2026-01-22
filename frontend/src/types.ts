@@ -1,7 +1,7 @@
-// User roles - Specialist is now a role, not a separate entity
+// src/types.ts
+
 export type UserRole = "Provider Admin" | "Supplier Representative" | "Contract Coordinator" | "Specialist";
 
-// Provider type
 export interface Provider {
   id: string;
   name: string;
@@ -24,7 +24,6 @@ export interface Provider {
   createdAt: string;
 }
 
-// User type - unified model that includes specialist information
 export interface User {
   id: string;
   name: string;
@@ -35,11 +34,12 @@ export interface User {
   status: "Active" | "Inactive";
   createdAt: string;
 
-  // Specialist-specific fields
   photo?: string;
   materialNumber?: string;
-  experienceLevel?: "Junior" | "Mid" | "Senior" | "Expert";
-  technologyLevel?: "Basic" | "Intermediate" | "Advanced" | "Expert";
+
+  experienceLevel?: "Junior" | "Intermediate" | "Senior";
+  technologyLevel?: "Common" | "Uncommon" | "Rare";
+
   performanceGrade?: "A" | "B" | "C" | "D";
   averageDailyRate?: number;
   skills?: string[];
@@ -48,132 +48,137 @@ export interface User {
   serviceOrdersActive?: number;
 }
 
-// Specialist type - kept for backward compatibility, but now references User
 export interface Specialist extends User {}
 
-// Contract type
-export interface Contract {
-  id: string;
-  title: string;
-  status: "Draft" | "Published" | "Active" | "Expired";
-  publishDate: string;
-  offerDeadline: string;
-  startDate: string;
-  endDate: string;
-  scopeOfWork: string;
-  termsAndConditions?: string;
-  functionalWeight?: number;
-  commercialWeight?: number;
-  acceptedRequestTypes: string[];
-  allowedDomains: string[];
-  allowedRoles: string[];
+export type ContractKind = "SERVICE" | "LICENSE" | "HARDWARE";
+export type ContractStatus = "DRAFT" | "PUBLISHED" | "IN_NEGOTIATION" | "ACTIVE" | "EXPIRED";
+
+export interface ContractAllowedConfiguration {
+  domains: string[];
+  roles: string[];
   experienceLevels: string[];
-  offerCyclesAndDeadlines?: { requestType: string; cycle: string; deadline: string }[];
-  pricingLimits: {
-    role: string;
-    experienceLevel: string;
-    technologyLevel?: string;
-    maxRate: number;
-  }[];
-  versionHistory: {
-    version: number;
-    date: string;
-    status: "Proposed" | "Signed" | "Rejected";
-    changes: string;
-    documentLink?: string;
-  }[];
+  technologyLevels: string[];
+  acceptedServiceRequestTypes: Array<{
+    type: "SINGLE" | "MULTI" | "TEAM" | "WORK_CONTRACT";
+    isAccepted: boolean;
+    biddingDeadlineDays: number;
+    offerCycles: number;
+  }>;
+  pricingRules: {
+    currency: "EUR";
+    maxDailyRates: Array<{
+      role: string;
+      experienceLevel: string;
+      technologyLevel: string;
+      maxDailyRate: number;
+    }>;
+  };
 }
 
-// Service Request type (matches backend camelCase mapping)
-export interface ServiceRequest {
-  id: string;
+export interface Contract {
+  contractId: string;
   title: string;
-  type: "Single" | "Multi" | "Team" | "Work Contract";
-  offerDeadlineAt?: string | null; // ISO string
-  cycles?: number | null;
-  linkedContractId: string;
-  role: string;
+  kind: ContractKind;
+  status: ContractStatus;
+
+  publishingDate?: string | null;
+  offerDeadlineAt?: string | null;
+
+  stakeholders?: {
+    procurementManager?: string;
+    legalCounsel?: string;
+    contractAdministrator?: string;
+  } | null;
+
+  scopeOfWork?: string;
+  termsAndConditions?: string;
+
+  weighting?: { functional: number; commercial: number } | null;
+
+  allowedConfiguration?: ContractAllowedConfiguration | null;
+
+  versionsAndDocuments?: any[] | null;
+
+  isAwardedToMyProvider: boolean;
+  myProviderStatus?: { status: "IN_NEGOTIATION" | "ACTIVE" | "EXPIRED"; awardedAt?: string | null; note?: string } | null;
+}
+
+export type ServiceRequestType = "SINGLE" | "MULTI" | "TEAM" | "WORK_CONTRACT";
+
+export interface Group3RoleRequirement {
+  domain: string;
+  roleName: string;
   technology: string;
   experienceLevel: string;
-  startDate: string;
-  endDate: string;
-  totalManDays: number;
+  manDays: number;
   onsiteDays: number;
-  performanceLocation: "Onshore" | "Nearshore" | "Offshore";
-  requiredLanguages: string[];
-  mustHaveCriteria: { name: string; weight: number }[];
-  niceToHaveCriteria: { name: string; weight: number }[];
-  taskDescription: string;
-  status: "Open" | "Closed";
 }
 
-/**
- * IMPORTANT:
- * Your real Offers pages use types from `src/api/serviceOffers.ts`.
- * This type stays only for legacy/mock compatibility (keep both styles optional).
- */
+export interface ServiceRequest {
+  id: string; // requestNumber
+  external_id?: number | null;
+
+  requestNumber: string;
+  title: string;
+  type: ServiceRequestType;
+  status: string;
+
+  contractId: string;
+  contractSupplier?: string;
+
+  startDate?: string | null;
+  endDate?: string | null;
+
+  performanceLocation?: string;
+
+  requiredLanguages?: string[];
+  mustHaveCriteria?: string[];
+  niceToHaveCriteria?: string[];
+
+  taskDescription?: string;
+  furtherInformation?: string;
+
+  roles?: Group3RoleRequirement[];
+
+  biddingCycleDays?: number | null;
+  biddingStartAt?: string | null;
+  biddingEndAt?: string | null;
+  biddingActive?: boolean | null;
+}
+
+export type ServiceOfferStatus = "DRAFT" | "SUBMITTED" | "WITHDRAWN" | "ACCEPTED" | "REJECTED";
+
 export interface ServiceOffer {
-  id: string | number;
+  id: number;
   serviceRequestId: string;
-  specialistId: string;
+  providerId: string;
+  status: ServiceOfferStatus;
 
-  // legacy/mock fields:
-  dailyRate?: number;
-  travelCostPerOnsiteDay?: number;
-  totalCost?: number;
+  requestSnapshot?: any;
+  response?: any; // response.specialists[] etc
+  deltas?: any[];
 
-  // API fields (current real backend):
-  daily_rate?: string | number;
-  total_cost?: string | number;
-
-  contractualRelationship?: "Employee" | "Freelancer" | "Subcontractor";
-  subcontractorCompany?: string;
-
-  mustHaveMatchPercentage?: number | null;
-  niceToHaveMatchPercentage?: number | null;
-
-  status: "Draft" | "Submitted" | "Accepted" | "Rejected" | "Withdrawn";
-  submittedAt?: string;
-  submitted_at?: string | null;
+  submittedAt?: string | null;
+  createdAt: string;
 }
 
-/**
- * Same concept for ServiceOrder:
- * Real Service Orders pages should import the type from `src/api/serviceOrders.ts`.
- * This stays for legacy/mock UI code.
- */
 export interface ServiceOrder {
-  id: string | number;
+  id: number;
+  serviceOfferId: number;
+  serviceRequestId: string;
+  providerId: string;
 
-  // legacy/mock
-  serviceRequestId?: string;
+  // canonical status used throughout frontend
+  status: "ACTIVE" | "COMPLETED";
+
+  // fields used by ServiceOrdersPage / ServiceOrderDetail / MyOrders
   specialistId?: string;
-  role?: string;
-  duration?: string;
-  startDate?: string;
-  endDate?: string;
-  location?: string;
+  title?: string;
   manDays?: number;
-  supplierCompany?: string;
-  representativeName?: string;
-  status?: "Active" | "Completed" | "Cancelled";
-  changeHistory?: { type: string; initiatedBy: string; date: string; status: string }[];
+  startDate?: string | null;
+  endDate?: string | null;
+  location?: string;
 
-  // API fields (optional here)
-  serviceOfferId?: number;
-  providerId?: string;
-  total_cost?: string | number;
-  created_at?: string;
-}
-
-// Activity Log type
-export interface ActivityLog {
-  id: string;
-  userId: string;
-  userName: string;
-  action: string;
-  entity: string;
-  entityId: string;
-  timestamp: string;
-  changes?: string;
+  totalCost?: number;
+  createdAt: string;
 }
