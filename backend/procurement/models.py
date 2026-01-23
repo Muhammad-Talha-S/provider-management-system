@@ -1,6 +1,6 @@
 from django.db import models
 from django.conf import settings
-
+from decimal import Decimal
 
 class ServiceRequest(models.Model):
     """
@@ -160,3 +160,61 @@ class ServiceOrderAssignment(models.Model):
 
     def __str__(self):
         return f"Assignment Order={self.order_id} Specialist={self.specialist_id}"
+
+
+class ServiceOrderChangeRequest(models.Model):
+    """
+    Change request lifecycle for Service Orders.
+
+    Bi-directional:
+    - created_by_system=True  => created by Group 3 (Project Manager side)
+    - created_by_system=False => created by our provider users (Supplier Rep / Provider Admin)
+
+    Status:
+      Requested -> Approved / Declined
+    """
+
+    TYPE_CHOICES = [("Extension", "Extension"), ("Substitution", "Substitution")]
+    STATUS_CHOICES = [("Requested", "Requested"), ("Approved", "Approved"), ("Declined", "Declined")]
+
+    id = models.AutoField(primary_key=True)
+
+    service_order = models.ForeignKey("procurement.ServiceOrder", on_delete=models.CASCADE, related_name="change_requests")
+    provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="order_change_requests")
+
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Requested")
+
+    created_by_system = models.BooleanField(default=False)
+    created_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="order_change_requests_created"
+    )
+    decided_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="order_change_requests_decided"
+    )
+
+    reason = models.TextField(blank=True, default="")
+    provider_response_note = models.TextField(blank=True, default="")
+
+    # Extension fields
+    new_end_date = models.DateField(null=True, blank=True)
+    additional_man_days = models.IntegerField(null=True, blank=True)
+    new_total_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # Substitution fields
+    old_specialist = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="order_change_requests_old_specialist"
+    )
+    new_specialist = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="order_change_requests_new_specialist"
+    )
+
+    # Track outbound Group3 calls (optional but useful for debugging)
+    group3_last_status = models.IntegerField(null=True, blank=True)
+    group3_last_response = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"CR#{self.id} {self.type} ({self.status}) Order={self.service_order_id}"

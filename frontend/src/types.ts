@@ -168,21 +168,32 @@ export interface ServiceOrder {
   serviceRequestId: string;
   providerId: string;
 
-  /** Assigned specialist (internal user id like SP2007). */
-  specialistId: string;
+  specialistId?: string;
 
-  /** Convenience fields for UI (coming from backend). */
   title: string;
   startDate?: string | null;
   endDate?: string | null;
   location: string;
   manDays: number;
 
-  /** Canonical status used across frontend UI */
-  status: "ACTIVE" | "COMPLETED";
+  // Extended lifecycle (keep ACTIVE/COMPLETED for now; allow change states later)
+  status: "ACTIVE" | "COMPLETED" | "EXTENSION_PENDING" | "SUBSTITUTION_PENDING";
 
-  /** Money fields normalized for UI usage */
-  totalCost?: number | null;
+  // Keep as decimal string (matches backend)
+  totalCost: string;
 
   createdAt: string;
+
+  assignments?: Array<{
+    specialistId: string;
+    specialistName: string;
+    materialNumber: string;
+    daily_rate: string;
+    travelling_cost: string;
+    specialist_cost: string;
+    match_must_have_criteria: boolean;
+    match_nice_to_have_criteria: boolean;
+    match_language_skills: boolean;
+  }>;
 }
+
