@@ -1,3 +1,4 @@
+// frontend/src/api/providers.ts
 import type { Provider } from "../types";
 import { authFetch } from "./http";
 

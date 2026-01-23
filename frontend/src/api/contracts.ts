@@ -1,3 +1,4 @@
+// frontend/src/api/contracts.ts
 import { authFetch } from "./http";
 import type { Contract } from "../types";
 

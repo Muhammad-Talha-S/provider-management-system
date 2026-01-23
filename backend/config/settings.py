@@ -14,15 +14,33 @@ SECRET_KEY = 'django-insecure-y=x5in!2(896cny5=sv&2mzyo_2@#rbaiei57p84ct(o1vbtma
 DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = ["*"]
 
-# Integration keys/URLs
-SERVICE_MGMT_API_KEY = os.getenv("SERVICE_MGMT_API_KEY", "")
-GROUP2_API_KEY = os.getenv("GROUP2_API_KEY", "")
-
-GROUP3_REQUESTS_URL = os.getenv(
-    "GROUP3_REQUESTS_URL",
-    "https://servicemanagementsystem-1-2s7d.onrender.com/api/requests",
+# --- Group 3 Integration (Service Management System) ---
+GROUP3_BIDS_URL = os.getenv(
+    "GROUP3_BIDS_URL",
+    "https://servicemanagementsystem-1-2s7d.onrender.com/api/public/bids",
 )
-GROUP3_OFFERS_BASE_URL = "https://servicemanagementsystem-1-2s7d.onrender.com/offers"
+
+GROUP3_EXTENSION_URL = os.getenv(
+    "GROUP3_EXTENSION_URL",
+    "https://servicemanagementsystem-1-2s7d.onrender.com/api/public/order-changes/extension",
+)
+
+GROUP3_SUBSTITUTION_URL = os.getenv(
+    "GROUP3_SUBSTITUTION_URL",
+    "https://servicemanagementsystem-1-2s7d.onrender.com/api/public/order-changes/substitution",
+)
+
+# API key shared with Group 3 (do NOT commit real value in public repos)
+GROUP3_CONNECTION_API_KEY = os.getenv("GROUP3_CONNECTION_API_KEY", "uni-project-2026-secret")
+
+# Group 3 expects this header name (case-insensitive in HTTP, but Django META uses upper)
+GROUP3_API_KEY_HEADER = os.getenv("GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+
+GROUP3_EXTENSION_DECISION_URL = os.getenv("GROUP3_EXTENSION_DECISION_URL", "")
+GROUP3_SUBSTITUTION_DECISION_URL = os.getenv("GROUP3_SUBSTITUTION_DECISION_URL", "")
+
+
+GROUP2_API_KEY = os.getenv("GROUP2_API_KEY", "")
 GROUP2_CONTRACTS_URL = os.getenv(
     "GROUP2_CONTRACTS_URL",
     "https://contractmanagement.example/api/contracts",  # placeholder default
@@ -89,12 +107,14 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME"),
-        "USER": os.getenv("DB_USER"),
-        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "NAME": os.getenv("DB_NAME", "providers_db"),
+        "USER": os.getenv("DB_USER" , "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "root"),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),}
 }
+
+print("Database settings:", DATABASES)
 
 AUTH_PASSWORD_VALIDATORS = []
 
@@ -119,4 +139,18 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
 }

@@ -11,7 +11,7 @@ from contracts.services.contract_validation import (
     normalize_sr_type,
 )
 
-from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderAssignment
+from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderAssignment, ServiceOrderChangeRequest
 
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
@@ -393,3 +393,237 @@ def upsert_group3_service_request(item: dict) -> ServiceRequest:
         },
     )
     return sr
+
+
+class ServiceOrderChangeRequestSerializer(serializers.ModelSerializer):
+    serviceOrderId = serializers.IntegerField(source="service_order_id", read_only=True)
+    providerId = serializers.CharField(source="provider_id", read_only=True)
+
+    createdBySystem = serializers.BooleanField(source="created_by_system", read_only=True)
+    createdByUserId = serializers.CharField(source="created_by_user_id", read_only=True)
+    decidedByUserId = serializers.CharField(source="decided_by_user_id", read_only=True)
+
+    providerResponseNote = serializers.CharField(source="provider_response_note", read_only=True)
+
+    newEndDate = serializers.DateField(source="new_end_date", allow_null=True, required=False)
+    additionalManDays = serializers.IntegerField(source="additional_man_days", allow_null=True, required=False)
+    newTotalCost = serializers.DecimalField(source="new_total_cost", max_digits=12, decimal_places=2, allow_null=True, required=False)
+
+    oldSpecialistId = serializers.CharField(source="old_specialist_id", allow_null=True, required=False, read_only=True)
+    newSpecialistId = serializers.CharField(source="new_specialist_id", allow_null=True, required=False)
+
+    class Meta:
+        model = ServiceOrderChangeRequest
+        fields = [
+            "id",
+            "serviceOrderId",
+            "providerId",
+            "type",
+            "status",
+            "createdBySystem",
+            "createdByUserId",
+            "decidedByUserId",
+            "created_at",
+            "decided_at",
+            "reason",
+            "providerResponseNote",
+            "newEndDate",
+            "additionalManDays",
+            "newTotalCost",
+            "oldSpecialistId",
+            "newSpecialistId",
+        ]
+
+
+class ServiceOrderChangeRequestCreateSerializer(serializers.Serializer):
+    """
+    Create CR from our UI:
+    - Substitution: { serviceOrderId, newSpecialistId, reason? }
+    - Extension:    { serviceOrderId, newEndDate, additionalManDays, newTotalCost, reason? }
+
+    NOTE: frontend currently only sends substitution, but we support both.
+    """
+    serviceOrderId = serializers.IntegerField()
+    type = serializers.ChoiceField(choices=["Extension", "Substitution"], required=False)
+
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+    # Extension
+    newEndDate = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    additionalManDays = serializers.IntegerField(required=False, allow_null=True)
+    newTotalCost = serializers.DecimalField(required=False, allow_null=True, max_digits=12, decimal_places=2)
+
+    # Substitution
+    newSpecialistId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate(self, attrs):
+        req = self.context["request"]
+        order_id = attrs["serviceOrderId"]
+
+        order = ServiceOrder.objects.select_related("provider").filter(id=order_id).first()
+        if not order:
+            raise serializers.ValidationError({"serviceOrderId": "Service order not found."})
+
+        if req.user.role not in ["Provider Admin", "Supplier Representative"]:
+            raise serializers.ValidationError("Not allowed.")
+
+        if order.provider_id != req.user.provider_id:
+            raise serializers.ValidationError("Not allowed: order belongs to another provider.")
+
+        # Infer type if not provided (frontend currently doesn't send type)
+        cr_type = attrs.get("type")
+        if not cr_type:
+            cr_type = "Substitution" if attrs.get("newSpecialistId") else "Extension"
+        attrs["type"] = cr_type
+
+        if cr_type == "Substitution":
+            ns = (attrs.get("newSpecialistId") or "").strip()
+            if not ns:
+                raise serializers.ValidationError({"newSpecialistId": "Replacement specialist is required."})
+
+            specialist = User.objects.filter(id=ns, provider_id=req.user.provider_id, role="Specialist", is_active=True).first()
+            if not specialist:
+                raise serializers.ValidationError({"newSpecialistId": "Invalid specialist for your provider."})
+
+        if cr_type == "Extension":
+            if not attrs.get("newEndDate"):
+                raise serializers.ValidationError({"newEndDate": "newEndDate is required for Extension."})
+
+        attrs["_order"] = order
+        return attrs
+
+    def create(self, validated_data):
+        req = self.context["request"]
+        order: ServiceOrder = validated_data["_order"]
+
+        cr_type = validated_data["type"]
+        reason = validated_data.get("reason") or ""
+
+        old_spec = None
+        first_assignment = order.assignments.select_related("specialist").first()
+        if first_assignment:
+            old_spec = first_assignment.specialist
+
+        new_end_date = None
+        if validated_data.get("newEndDate"):
+            new_end_date = parse_date(validated_data["newEndDate"])
+
+        new_spec = None
+        if validated_data.get("newSpecialistId"):
+            new_spec = User.objects.filter(id=validated_data["newSpecialistId"]).first()
+
+        cr = ServiceOrderChangeRequest.objects.create(
+            service_order=order,
+            provider=order.provider,
+            type=cr_type,
+            status="Requested",
+            created_by_system=False,
+            created_by_user=req.user,
+            reason=reason,
+            new_end_date=new_end_date,
+            additional_man_days=validated_data.get("additionalManDays"),
+            new_total_cost=validated_data.get("newTotalCost"),
+            old_specialist=old_spec,
+            new_specialist=new_spec,
+        )
+        return cr
+
+
+class ServiceOrderChangeRequestDecisionSerializer(serializers.Serializer):
+    """
+    Provider decision on a change request.
+
+    Supports:
+    - Approve/Decline for both inbound (Group3) and outbound (PMS-created) CRs.
+    - For inbound Substitution (created_by_system=True), provider MUST select newSpecialistId when approving.
+    """
+    decision = serializers.ChoiceField(choices=["Approve", "Decline"])
+    providerResponseNote = serializers.CharField(required=False, allow_blank=True, default="")
+
+    # IMPORTANT: needed for inbound substitution approval
+    newSpecialistId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate(self, attrs):
+        cr: ServiceOrderChangeRequest = self.context.get("cr")
+        req = self.context.get("request")
+
+        decision = attrs.get("decision")
+        new_sid = (attrs.get("newSpecialistId") or "").strip()
+
+        # Only required for inbound substitution approvals
+        if cr and cr.type == "Substitution" and cr.created_by_system and decision == "Approve":
+            if not new_sid:
+                raise serializers.ValidationError({"newSpecialistId": "Replacement specialist is required to approve an inbound substitution."})
+
+            # Validate specialist belongs to same provider and is active Specialist
+            ok = User.objects.filter(
+                id=new_sid,
+                provider_id=cr.provider_id,
+                role="Specialist",
+                is_active=True,
+            ).exists()
+            if not ok:
+                raise serializers.ValidationError({"newSpecialistId": "Invalid specialist for this provider."})
+
+        return attrs
+
+    def apply_decision(self, cr: ServiceOrderChangeRequest, decided_by_user):
+        """
+        Applies decision + updates underlying ServiceOrder on Approve.
+        Idempotent: if CR not Requested, it returns unchanged.
+        """
+        decision = self.validated_data["decision"]
+        note = self.validated_data.get("providerResponseNote") or ""
+        new_sid = (self.validated_data.get("newSpecialistId") or "").strip()
+
+        if cr.status != "Requested":
+            return cr  # idempotent
+
+        # attach replacement specialist for inbound substitution approvals
+        if cr.type == "Substitution" and cr.created_by_system and decision == "Approve":
+            if new_sid:
+                cr.new_specialist = User.objects.filter(id=new_sid).first()
+
+        cr.decided_by_user = decided_by_user
+        cr.provider_response_note = note
+        cr.decided_at = timezone.now()
+        cr.status = "Approved" if decision == "Approve" else "Declined"
+        cr.save(update_fields=["new_specialist", "decided_by_user", "provider_response_note", "decided_at", "status"])
+
+        if cr.status != "Approved":
+            return cr
+
+        # Apply changes to the order on approval
+        order = cr.service_order
+
+        if cr.type == "Extension":
+            if cr.new_end_date:
+                order.end_date = cr.new_end_date
+            if cr.additional_man_days is not None:
+                order.man_days = int(order.man_days or 0) + int(cr.additional_man_days or 0)
+            if cr.new_total_cost is not None:
+                order.total_cost = cr.new_total_cost
+            order.save(update_fields=["end_date", "man_days", "total_cost"])
+
+        if cr.type == "Substitution":
+            # Replace FIRST assignment (simple deterministic rule)
+            first = order.assignments.select_related("specialist").first()
+            if first and cr.new_specialist:
+                old_daily = first.daily_rate
+                old_travel = first.travelling_cost
+                old_cost = first.specialist_cost
+
+                first.delete()
+
+                ServiceOrderAssignment.objects.create(
+                    order=order,
+                    specialist=cr.new_specialist,
+                    daily_rate=old_daily,
+                    travelling_cost=old_travel,
+                    specialist_cost=old_cost,
+                    match_must_have_criteria=True,
+                    match_nice_to_have_criteria=True,
+                    match_language_skills=True,
+                )
+
+        return cr

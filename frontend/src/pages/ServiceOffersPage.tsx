@@ -1,4 +1,4 @@
-// src/pages/ServiceOffersPage.tsx
+// frontend/src/pages/ServiceOffersPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";

@@ -1,3 +1,4 @@
+// frontend/src/pages/ActivityLogPage.tsx
 import React, { useEffect, useState } from "react";
 import { Activity, User, Clock, FileText } from "lucide-react";
 import { useApp } from "../context/AppContext";

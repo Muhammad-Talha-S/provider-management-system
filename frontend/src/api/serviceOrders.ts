@@ -1,3 +1,4 @@
+// frontend/src/api/serviceOrders.ts
 import { authFetch } from "./http";
 
 export type ServiceOrder = {
@@ -35,26 +36,31 @@ function mapOrder(raw: any): ServiceOrder {
   const assignments = Array.isArray(raw?.assignments) ? raw.assignments : [];
   const firstSpecialistId = assignments?.[0]?.specialistId;
 
+  const statusRaw = String(raw?.status || "").toUpperCase();
+  const status: "ACTIVE" | "COMPLETED" = statusRaw === "COMPLETED" ? "COMPLETED" : "ACTIVE";
+
   return {
-    id: raw.id,
-    serviceOfferId: raw.serviceOfferId,
-    serviceRequestId: raw.serviceRequestId,
-    providerId: raw.providerId,
+    id: Number(raw.id),
+    serviceOfferId: Number(raw.serviceOfferId),
+    serviceRequestId: String(raw.serviceRequestId),
+    providerId: String(raw.providerId),
 
     specialistId: firstSpecialistId,
 
-    title: raw.title || "",
+    title: String(raw.title || ""),
     startDate: raw.start_date ?? null,
     endDate: raw.end_date ?? null,
-    location: raw.location || "",
+    location: String(raw.location || ""),
     manDays: Number(raw.man_days ?? 0),
+
     totalCost: String(raw.total_cost ?? "0"),
-    status: String(raw.status || "").toUpperCase() === "COMPLETED" ? "Completed" : "Active",
-    createdAt: raw.created_at,
+    status,
+    createdAt: String(raw.created_at || ""),
 
     assignments,
   };
 }
+
 
 export async function getServiceOrders(access: string): Promise<ServiceOrder[]> {
   const res = await authFetch("/api/service-orders/", access, { method: "GET" });

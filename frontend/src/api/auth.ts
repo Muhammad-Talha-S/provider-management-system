@@ -1,3 +1,4 @@
+// frontend/src/api/auth.ts
 import type { User, Provider } from "../types";
 import { API_BASE } from "./config";
 
