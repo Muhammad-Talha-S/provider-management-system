@@ -12,14 +12,18 @@ from activitylog.utils import log_activity
 from contracts.models import ContractProviderStatus
 
 from accounts.models import User
-from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderAssignment
+from .models import ServiceRequest, ServiceOffer, ServiceOrder, ServiceOrderAssignment, ServiceOrderChangeRequest
 from .serializers import (
     ServiceRequestSerializer,
     ServiceOfferSerializer,
     ServiceOfferCreateSerializer,
     ServiceOrderSerializer,
     upsert_group3_service_request,
+    ServiceOrderChangeRequestSerializer,
+    ServiceOrderChangeRequestCreateSerializer,
+    ServiceOrderChangeRequestDecisionSerializer,
 )
+from procurement.auth import Group3ApiKeyAuthentication
 
 
 def _assert_can_view_service_requests(user):
@@ -99,18 +103,6 @@ class Group3SyncServiceRequestsView(APIView):
         return Response({"upserted": upserted})
 
 
-def _group3_offer_put_url(offer_id: int) -> str:
-    """
-    Group3 expects: PUT https://.../offers/{offerId}
-    Set GROUP3_OFFERS_BASE_URL in settings, example:
-      GROUP3_OFFERS_BASE_URL = "https://servicemanagementsystem-1-2s7d.onrender.com/offers"
-    """
-    base = getattr(settings, "GROUP3_OFFERS_BASE_URL", "").rstrip("/")
-    if not base:
-        raise RuntimeError("GROUP3_OFFERS_BASE_URL is not configured")
-    return f"{base}/{offer_id}"
-
-
 def _map_offer_to_group3_payload(offer: ServiceOffer) -> dict:
     """
     Payload sent to Group3.
@@ -167,30 +159,46 @@ def _map_offer_to_group3_payload(offer: ServiceOffer) -> dict:
     return payload
 
 
+def _group3_bids_url() -> str:
+    url = getattr(settings, "GROUP3_BIDS_URL", "").strip()
+    if not url:
+        raise RuntimeError("GROUP3_BIDS_URL is not configured")
+    return url
+
+
 def _send_offer_to_group3(offer: ServiceOffer) -> None:
     """
-    PUT offer to Group3.
-    If it fails, raise -> request fails so FE shows error.
+    Send Service Offer (Bid) to Group3 (Service Management System).
+
+    MUST be POST /api/public/bids.
+    Header required:
+      ServiceRequestbids3a: <API_KEY>
     """
-    url = _group3_offer_put_url(offer.id)
+    url = _group3_bids_url()
     payload = _map_offer_to_group3_payload(offer)
 
-    print("Sending offer to Group3:", url, payload)
+    header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+    api_key = getattr(settings, "GROUP3_CONNECTION_API_KEY", "")
 
-    '''
-    resp = requests.put(url, json=payload, timeout=20)
+    headers = {
+        "Content-Type": "application/json",
+        header_name: api_key,
+    }
+
+    print("Sending offer to Group3:", headers, url, payload)
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=20)
 
     offer.group3_last_status = resp.status_code
     try:
         offer.group3_last_response = resp.json()
     except Exception:
         offer.group3_last_response = {"raw": resp.text[:2000]}
-
     offer.save(update_fields=["group3_last_status", "group3_last_response"])
 
     if resp.status_code >= 400:
-        raise ValueError(f"Group3 PUT failed: status={resp.status_code}")
-    '''
+        print("Group3 bid POST failed:", resp.status_code, resp.text)
+        # raise ValueError(f"Group3 bid POST failed: status={resp.status_code}")
 
 
 class ServiceOfferListCreateView(generics.ListCreateAPIView):
@@ -253,97 +261,89 @@ class ServiceOfferDetailView(generics.RetrieveAPIView):
 
 class Group3OfferDecisionWebhookView(APIView):
     """
-    Group3 calls us when it accepts/rejects an offer.
-    No API key for now -> AllowAny.
+    Group3 calls us when it sets offer decision.
+
     POST /api/integrations/group3/offers/<offer_id>/decision/
-    body:
+    Headers:
+      ServiceRequestbids3a: <API_KEY>
+
+    Body:
       {
         "serviceOfferId": 123,
-        "decision": "ACCEPTED" | "REJECTED",
-        "providerId": "P001",
-        "providerName": "RheinTech Solutions GmbH"
+        "decision": "SUBMITTED" | "ACCEPTED" | "REJECTED"
       }
     """
+
+    authentication_classes = [Group3ApiKeyAuthentication]
     permission_classes = [AllowAny]
 
     def post(self, request, offer_id: int):
         data = request.data if isinstance(request.data, dict) else {}
-        decision = str(data.get("decision") or data.get("status") or "").upper()
+
+        decision = str(data.get("decision") or data.get("status") or "").upper().strip()
         body_offer_id = data.get("serviceOfferId")
 
-        # accept either offer_id in path OR in body, but path is authoritative
         if body_offer_id and int(body_offer_id) != int(offer_id):
             return Response({"detail": "serviceOfferId mismatch with URL."}, status=400)
 
-        if decision not in ["ACCEPTED", "REJECTED"]:
-            return Response({"detail": "decision must be ACCEPTED or REJECTED."}, status=400)
+        if decision not in ["SUBMITTED", "ACCEPTED", "REJECTED"]:
+            return Response({"detail": "decision must be SUBMITTED, ACCEPTED or REJECTED."}, status=400)
 
-        try:
-            offer = ServiceOffer.objects.select_related("service_request", "provider").get(id=offer_id)
-        except ServiceOffer.DoesNotExist:
+        offer = ServiceOffer.objects.select_related("service_request", "provider").filter(id=offer_id).first()
+        if not offer:
             raise NotFound("Offer not found.")
 
-        # idempotency: if already final, just return OK
-        if offer.status in ["ACCEPTED", "REJECTED"]:
+        # Idempotent handling
+        if offer.status in ["ACCEPTED", "REJECTED"] and decision in ["SUBMITTED"]:
             return Response({"ok": True, "offerStatus": offer.status})
 
         with transaction.atomic():
-            offer.status = decision
+            offer.status = decision if decision != "SUBMITTED" else "SUBMITTED"
             offer.save(update_fields=["status"])
 
             if decision == "ACCEPTED":
-                # create ServiceOrder (one order per offer)
                 sr = offer.service_request
                 resp = offer.response if isinstance(offer.response, dict) else {}
                 total_cost = resp.get("totalCost", 0) or 0
 
-                order = ServiceOrder.objects.create(
+                order, created = ServiceOrder.objects.get_or_create(
                     service_offer=offer,
-                    service_request=sr,
-                    provider=offer.provider,
-                    title=sr.title or "",
-                    start_date=sr.start_date,
-                    end_date=sr.end_date,
-                    location=sr.performance_location or "Onsite",
-                    man_days=0,
-                    total_cost=total_cost,
-                    status="ACTIVE",
+                    defaults={
+                        "service_request": sr,
+                        "provider": offer.provider,
+                        "title": sr.title or "",
+                        "start_date": sr.start_date,
+                        "end_date": sr.end_date,
+                        "location": sr.performance_location or "Onsite",
+                        "man_days": 0,
+                        "total_cost": total_cost,
+                        "status": "ACTIVE",
+                    },
                 )
 
-                # link specialists from offer.response.specialists
-                specs = resp.get("specialists")
-                if isinstance(specs, list):
-                    for s in specs:
-                        if not isinstance(s, dict):
-                            continue
-                        uid = str(s.get("userId") or "")
-                        if not uid:
-                            continue
-                        specialist = User.objects.filter(id=uid, role="Specialist").first()
-                        if not specialist:
-                            continue
+                if created:
+                    specs = resp.get("specialists")
+                    if isinstance(specs, list):
+                        for s in specs:
+                            if not isinstance(s, dict):
+                                continue
+                            uid = str(s.get("userId") or "")
+                            if not uid:
+                                continue
+                            specialist = User.objects.filter(id=uid, role="Specialist").first()
+                            if not specialist:
+                                continue
 
-                        ServiceOrderAssignment.objects.create(
-                            order=order,
-                            specialist=specialist,
-                            daily_rate=s.get("dailyRate") or 0,
-                            travelling_cost=s.get("travellingCost") or 0,
-                            specialist_cost=s.get("specialistCost") or 0,
-                            match_must_have_criteria=bool(s.get("matchMustHaveCriteria", True)),
-                            match_nice_to_have_criteria=bool(s.get("matchNiceToHaveCriteria", True)),
-                            match_language_skills=bool(s.get("matchLanguageSkills", True)),
-                        )
-
-        log_activity(
-            provider_id=offer.provider_id,
-            actor_type="SYSTEM",
-            actor_user=None,
-            event_type="GROUP3_OFFER_DECISION",
-            entity_type="ServiceOffer",
-            entity_id=str(offer.id),
-            message=f"Group3 decision={decision} for offer={offer.id}",
-            metadata={"decision": decision, "providerId": data.get("providerId"), "providerName": data.get("providerName")},
-        )
+                            ServiceOrderAssignment.objects.create(
+                                order=order,
+                                specialist=specialist,
+                                daily_rate=s.get("dailyRate") or 0,
+                                travelling_cost=s.get("travellingCost") or 0,
+                                specialist_cost=s.get("specialistCost") or 0,
+                                match_must_have_criteria=bool(s.get("matchMustHaveCriteria", True)),
+                                match_nice_to_have_criteria=bool(s.get("matchNiceToHaveCriteria", True)),
+                                match_language_skills=bool(s.get("matchLanguageSkills", True)),
+                            )
 
         return Response({"ok": True, "offerStatus": offer.status})
 
@@ -453,3 +453,217 @@ class ServiceOrderDetailView(generics.RetrieveAPIView):
         if user.role == "Specialist":
             return qs.filter(assignments__specialist=user).distinct()
         raise PermissionDenied("Not allowed.")
+
+
+def _post_group3_extension(order_id: int, body: dict) -> requests.Response:
+    url = getattr(settings, "GROUP3_EXTENSION_URL", "").strip()
+    header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+    api_key = getattr(settings, "GROUP3_CONNECTION_API_KEY", "")
+
+    headers = {"Content-Type": "application/json", header_name: api_key}
+    payload = {"orderId": order_id, "body": body}
+    return requests.post(url, json=payload, headers=headers, timeout=20)
+
+
+def _post_group3_substitution(order_id: int, body: dict) -> requests.Response:
+    url = getattr(settings, "GROUP3_SUBSTITUTION_URL", "").strip()
+    header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+    api_key = getattr(settings, "GROUP3_CONNECTION_API_KEY", "")
+
+    headers = {"Content-Type": "application/json", header_name: api_key}
+    payload = {"orderId": order_id, "body": body}
+    return requests.post(url, json=payload, headers=headers, timeout=20)
+
+
+class ServiceOrderChangeRequestListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ServiceOrderChangeRequest.objects.select_related("service_order", "provider").order_by("-created_at")
+
+        if user.role in ["Provider Admin", "Supplier Representative"]:
+            return qs.filter(provider_id=user.provider_id)
+
+        if user.role == "Specialist":
+            # Specialists can see CRs for orders they are assigned to
+            return qs.filter(service_order__assignments__specialist=user).distinct()
+
+        raise PermissionDenied("Not allowed.")
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return ServiceOrderChangeRequestCreateSerializer
+        return ServiceOrderChangeRequestSerializer
+
+    def create(self, request, *args, **kwargs):
+        ser = ServiceOrderChangeRequestCreateSerializer(data=request.data, context={"request": request})
+        ser.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            cr: ServiceOrderChangeRequest = ser.save()
+
+            # OUTBOUND: if created by our system, send to Group3 immediately
+            # (created_by_system=False here by serializer)
+            if cr.type == "Extension":
+                body = {
+                    "newEndDate": str(cr.new_end_date) if cr.new_end_date else None,
+                    "newManDays": int(cr.additional_man_days or 0),
+                    "newContractValue": float(cr.new_total_cost or 0),
+                    "comment": cr.reason or "",
+                }
+                resp = _post_group3_extension(cr.service_order_id, body)
+
+            else:
+                new_name = cr.new_specialist.name if cr.new_specialist else ""
+                body = {"newSpecialistName": new_name, "comment": cr.reason or ""}
+                resp = _post_group3_substitution(cr.service_order_id, body)
+
+            cr.group3_last_status = resp.status_code
+            try:
+                cr.group3_last_response = resp.json()
+            except Exception:
+                cr.group3_last_response = {"raw": resp.text[:2000]}
+            cr.save(update_fields=["group3_last_status", "group3_last_response"])
+
+            if resp.status_code >= 400:
+                raise ValueError(f"Group3 change-request POST failed: status={resp.status_code}")
+
+        out = ServiceOrderChangeRequestSerializer(cr)
+        return Response(out.data, status=201)
+
+
+class ServiceOrderChangeRequestDecisionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, id: int):
+        user = request.user
+        if user.role not in ["Provider Admin", "Supplier Representative"]:
+            raise PermissionDenied("Not allowed.")
+
+        cr = ServiceOrderChangeRequest.objects.select_related("provider", "service_order").filter(id=id).first()
+        if not cr:
+            raise NotFound("Change request not found.")
+
+        if cr.provider_id != user.provider_id:
+            raise PermissionDenied("Not allowed for this provider.")
+
+        ser = ServiceOrderChangeRequestDecisionSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            ser.apply_decision(cr, decided_by_user=user)
+
+        return Response(ServiceOrderChangeRequestSerializer(cr).data)
+
+
+class Group3InboundExtensionCreateView(APIView):
+    """
+    INBOUND: Group3 -> our system
+
+    POST /api/integrations/group3/order-changes/extension/
+    Headers:
+      ServiceRequestbids3a: <API_KEY>
+
+    Body (same as their outbound format):
+      {
+        "orderId": 123,
+        "body": {
+          "newEndDate": "2026-01-22",
+          "newManDays": 10,
+          "newContractValue": 9999.99,
+          "comment": "..."
+        }
+      }
+    """
+    authentication_classes = [Group3ApiKeyAuthentication]
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        order_id = data.get("orderId")
+        body = data.get("body") if isinstance(data.get("body"), dict) else {}
+
+        if not order_id:
+            return Response({"detail": "orderId is required"}, status=400)
+
+        order = ServiceOrder.objects.select_related("provider").filter(id=int(order_id)).first()
+        if not order:
+            return Response({"detail": "Service order not found"}, status=404)
+
+        new_end = body.get("newEndDate")
+        new_md = body.get("newManDays")
+        new_val = body.get("newContractValue")
+        comment = body.get("comment") or ""
+
+        cr = ServiceOrderChangeRequest.objects.create(
+            service_order=order,
+            provider=order.provider,
+            type="Extension",
+            status="Requested",
+            created_by_system=True,
+            reason=str(comment),
+            new_end_date=parse_date(new_end) if new_end else None,
+            additional_man_days=int(new_md) if new_md is not None else None,
+            new_total_cost=Decimal(str(new_val)) if new_val is not None else None,
+        )
+
+        return Response(ServiceOrderChangeRequestSerializer(cr).data, status=201)
+
+
+class Group3InboundSubstitutionCreateView(APIView):
+    """
+    INBOUND: Group3 -> our system
+
+    POST /api/integrations/group3/order-changes/substitution/
+    Headers:
+      ServiceRequestbids3a: <API_KEY>
+
+    Body:
+      {
+        "orderId": 123,
+        "body": {
+          "newSpecialistName": "string",
+          "comment": "string"
+        }
+      }
+
+    NOTE: Group3 sends a name, but we need a specialist id.
+    For now we store the comment + keep new_specialist null.
+    Provider must pick actual replacement specialist in UI when approving.
+    """
+    authentication_classes = [Group3ApiKeyAuthentication]
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        order_id = data.get("orderId")
+        body = data.get("body") if isinstance(data.get("body"), dict) else {}
+
+        if not order_id:
+            return Response({"detail": "orderId is required"}, status=400)
+
+        order = ServiceOrder.objects.select_related("provider").filter(id=int(order_id)).first()
+        if not order:
+            return Response({"detail": "Service order not found"}, status=404)
+
+        comment = body.get("comment") or ""
+        requested_name = body.get("newSpecialistName") or ""
+
+        # capture current specialist as old_specialist
+        old_spec = None
+        first = order.assignments.select_related("specialist").first()
+        if first:
+            old_spec = first.specialist
+
+        cr = ServiceOrderChangeRequest.objects.create(
+            service_order=order,
+            provider=order.provider,
+            type="Substitution",
+            status="Requested",
+            created_by_system=True,
+            reason=f"{comment}".strip() or f"Requested substitution: {requested_name}".strip(),
+            old_specialist=old_spec,
+        )
+
+        return Response(ServiceOrderChangeRequestSerializer(cr).data, status=201)

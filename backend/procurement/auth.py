@@ -5,19 +5,26 @@ from django.conf import settings
 
 class Group3ApiKeyAuthentication(BaseAuthentication):
     """
-    Simple API-key auth for Group 3 system calls.
-    Client sends:  X-API-Key: <key>
+    API-key auth for inbound calls FROM Group 3 to our system.
+
+    Group 3 sends:
+      ServiceRequestbids3a: <API_KEY>
+
+    We validate against settings.GROUP3_CONNECTION_API_KEY.
     """
-    header_name = "HTTP_X_API_KEY"
 
     def authenticate(self, request):
-        expected = getattr(settings, "GROUP3_API_KEY", None)
+        expected = getattr(settings, "GROUP3_CONNECTION_API_KEY", None)
         if not expected:
-            raise AuthenticationFailed("Server missing GROUP3_API_KEY setting.")
+            raise AuthenticationFailed("Server missing GROUP3_CONNECTION_API_KEY setting.")
 
-        provided = request.META.get(self.header_name)
+        header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+        meta_key = "HTTP_" + header_name.upper().replace("-", "_")
+        provided = request.META.get(meta_key)
+
         if not provided or provided != expected:
             raise AuthenticationFailed("Invalid or missing API key.")
 
-        # DRF expects (user, auth). We don't have a user. Return (None, 'apikey').
-        return (None, "apikey")
+        # Return a pseudo auth tuple (no user)
+        return (None, "group3-apikey")
+
