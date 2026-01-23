@@ -1,4 +1,4 @@
-// src/pages/CreateServiceOffer.tsx
+// frontend/src/pages/CreateServiceOffer.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {

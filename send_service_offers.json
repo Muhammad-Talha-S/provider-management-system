@@ -1,0 +1,61 @@
+{
+  "id": 3,
+  "serviceRequest": {
+    "id": 39,
+    "requestNumber": "SR-K96BI8BI",
+    "title": "Document Management System",
+    "type": "SINGLE",
+    "requestedByUsername": "John",
+    "requestedByRole": "PROJECT_MANAGER",
+    "projectId": "PRJ-NVS458",
+    "projectName": "Document Management System",
+    "contractId": "C003",
+    "contractSupplier": "IBM",
+    "startDate": "2026-01-23",
+    "endDate": "2027-02-17",
+    "performanceLocation": "Onsite",
+    "maxOffers": 5,
+    "maxAcceptedOffers": 1,
+    "requiredLanguages": ["German"],
+    "mustHaveCriteria": [],
+    "niceToHaveCriteria": ["Speak English"],
+    "taskDescription": "Develop an enterprise document management system to securely store, manage, and share internal documents. The system will support role-based access, version control, approval workflows, audit trails, and integration with existing enterprise applications",
+    "furtherInformation": "Skills: Document Workflow Automation, Enterprise Applications, React, Java, Angular",
+    "status": "APPROVED_FOR_BIDDING",
+    "roles": [
+      {
+        "domain": "Blockchain",
+        "manDays": 120,
+        "roleName": "Node Engineer",
+        "onsiteDays": 90,
+        "technology": "Node.js",
+        "experienceLevel": "Mid"
+      }
+    ],
+    "biddingCycleDays": 7,
+    "biddingStartAt": "2026-01-19T14:51:06.193384+00:00",
+    "biddingEndAt": "2026-01-26T14:51:06.193384+00:00",
+    "biddingActive": true
+  },
+  "specialists": [
+    {
+      "userId": "SP1002",
+      "name": "Jan Klein",
+      "materialNumber": "MAT-P001-0002",
+      "dailyRate": 690.0,
+      "travellingCost": 50.0,
+      "specialistCost": 87300.0,
+      "matchMustHaveCriteria": true,
+      "matchNiceToHaveCriteria": true,
+      "matchLanguageSkills": true
+    }
+  ],
+  "totalCost": 87300.0,
+  "contractualRelationship": "Employee",
+  "subcontractorCompany": "",
+  "supplierName": "RheinTech Solutions GmbH",
+  "supplierRepresentative": "Lea Koch",
+  "offerStatus": "SUBMITTED",
+  "providerId": "P001",
+  "providerName": "RheinTech Solutions GmbH"
+}

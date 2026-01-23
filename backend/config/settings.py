@@ -22,7 +22,10 @@ GROUP3_REQUESTS_URL = os.getenv(
     "GROUP3_REQUESTS_URL",
     "https://servicemanagementsystem-1-2s7d.onrender.com/api/requests",
 )
-GROUP3_OFFERS_BASE_URL = "https://servicemanagementsystem-1-2s7d.onrender.com/offers"
+
+GROUP3_OFFERS_BASE_URL = "https://servicemanagementsystem-1-2s7d.onrender.com/api/public/bids"
+GROUP3_CONNECTION_API_KEY = "uni-project-2026-secret"
+
 GROUP2_CONTRACTS_URL = os.getenv(
     "GROUP2_CONTRACTS_URL",
     "https://contractmanagement.example/api/contracts",  # placeholder default
@@ -119,4 +122,18 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
 }

@@ -1,3 +1,4 @@
+// frontend/src/pages/ServiceOrderDetail.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Clock } from "lucide-react";
