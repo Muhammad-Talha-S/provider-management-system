@@ -36,6 +36,9 @@ GROUP3_CONNECTION_API_KEY = os.getenv("GROUP3_CONNECTION_API_KEY", "uni-project-
 # Group 3 expects this header name (case-insensitive in HTTP, but Django META uses upper)
 GROUP3_API_KEY_HEADER = os.getenv("GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
 
+GROUP3_EXTENSION_DECISION_URL = os.getenv("GROUP3_EXTENSION_DECISION_URL", "")
+GROUP3_SUBSTITUTION_DECISION_URL = os.getenv("GROUP3_SUBSTITUTION_DECISION_URL", "")
+
 
 GROUP2_API_KEY = os.getenv("GROUP2_API_KEY", "")
 GROUP2_CONTRACTS_URL = os.getenv(

@@ -474,6 +474,35 @@ def _post_group3_substitution(order_id: int, body: dict) -> requests.Response:
     payload = {"orderId": order_id, "body": body}
     return requests.post(url, json=payload, headers=headers, timeout=20)
 
+def _group3_headers() -> dict:
+    header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+    api_key = getattr(settings, "GROUP3_CONNECTION_API_KEY", "")
+    return {"Content-Type": "application/json", header_name: api_key}
+
+
+def _post_group3_extension_decision(order_id: int, decision: str, body: dict) -> requests.Response | None:
+    """
+    OPTIONAL callback to Group3 for inbound extension decisions.
+    If URL not configured yet, returns None (no-op).
+    """
+    url = getattr(settings, "GROUP3_EXTENSION_DECISION_URL", "").strip()
+    if not url:
+        return None
+    payload = {"orderId": order_id, "decision": decision, "body": body}
+    return requests.post(url, json=payload, headers=_group3_headers(), timeout=20)
+
+
+def _post_group3_substitution_decision(order_id: int, decision: str, body: dict) -> requests.Response | None:
+    """
+    OPTIONAL callback to Group3 for inbound substitution decisions.
+    If URL not configured yet, returns None (no-op).
+    """
+    url = getattr(settings, "GROUP3_SUBSTITUTION_DECISION_URL", "").strip()
+    if not url:
+        return None
+    payload = {"orderId": order_id, "decision": decision, "body": body}
+    return requests.post(url, json=payload, headers=_group3_headers(), timeout=20)
+
 
 class ServiceOrderChangeRequestListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
@@ -509,7 +538,6 @@ class ServiceOrderChangeRequestListCreateView(generics.ListCreateAPIView):
                 body = {
                     "newEndDate": str(cr.new_end_date) if cr.new_end_date else None,
                     "newManDays": int(cr.additional_man_days or 0),
-                    "newContractValue": float(cr.new_total_cost or 0),
                     "comment": cr.reason or "",
                 }
                 resp = _post_group3_extension(cr.service_order_id, body)
@@ -548,11 +576,46 @@ class ServiceOrderChangeRequestDecisionView(APIView):
         if cr.provider_id != user.provider_id:
             raise PermissionDenied("Not allowed for this provider.")
 
-        ser = ServiceOrderChangeRequestDecisionSerializer(data=request.data)
+        # IMPORTANT: pass cr into serializer context for conditional validation
+        ser = ServiceOrderChangeRequestDecisionSerializer(
+            data=request.data,
+            context={"request": request, "cr": cr},
+        )
         ser.is_valid(raise_exception=True)
 
         with transaction.atomic():
             ser.apply_decision(cr, decided_by_user=user)
+
+            # Notify Group3 ONLY for inbound requests (created_by_system=True)
+            if cr.created_by_system:
+                decision_word = "APPROVED" if cr.status == "Approved" else "DECLINED"
+
+                resp = None
+                if cr.type == "Extension":
+                    body = {
+                        "newEndDate": str(cr.new_end_date) if cr.new_end_date else None,
+                        "newManDays": int(cr.additional_man_days or 0),
+                        # Your rule: newContractValue not required from PMS; keep omitted here too
+                        "comment": (cr.provider_response_note or "") or (cr.reason or ""),
+                    }
+                    resp = _post_group3_extension_decision(cr.service_order_id, decision_word, body)
+
+                elif cr.type == "Substitution":
+                    new_name = cr.new_specialist.name if cr.new_specialist else ""
+                    body = {
+                        "newSpecialistName": new_name,
+                        "comment": (cr.provider_response_note or "") or (cr.reason or ""),
+                    }
+                    resp = _post_group3_substitution_decision(cr.service_order_id, decision_word, body)
+
+                # Store status/response if we actually called Group3
+                if resp is not None:
+                    cr.group3_last_status = resp.status_code
+                    try:
+                        cr.group3_last_response = resp.json()
+                    except Exception:
+                        cr.group3_last_response = {"raw": resp.text[:2000]}
+                    cr.save(update_fields=["group3_last_status", "group3_last_response"])
 
         return Response(ServiceOrderChangeRequestSerializer(cr).data)
 
