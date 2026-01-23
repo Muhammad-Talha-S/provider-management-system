@@ -51,7 +51,7 @@ export async function requestSubstitution(access: string, payload: { serviceOrde
 export async function decideChangeRequest(
   access: string,
   id: number,
-  payload: { decision: "Approve" | "Decline"; providerResponseNote?: string }
+  payload: { decision: "Approve" | "Decline"; providerResponseNote?: string; newSpecialistId?: string }
 ) {
   const res = await authFetch(`/api/service-order-change-requests/${id}/decision/`, access, {
     method: "PATCH",

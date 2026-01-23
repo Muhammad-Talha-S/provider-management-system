@@ -530,21 +530,65 @@ class ServiceOrderChangeRequestCreateSerializer(serializers.Serializer):
 
 
 class ServiceOrderChangeRequestDecisionSerializer(serializers.Serializer):
+    """
+    Provider decision on a change request.
+
+    Supports:
+    - Approve/Decline for both inbound (Group3) and outbound (PMS-created) CRs.
+    - For inbound Substitution (created_by_system=True), provider MUST select newSpecialistId when approving.
+    """
     decision = serializers.ChoiceField(choices=["Approve", "Decline"])
     providerResponseNote = serializers.CharField(required=False, allow_blank=True, default="")
 
+    # IMPORTANT: needed for inbound substitution approval
+    newSpecialistId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate(self, attrs):
+        cr: ServiceOrderChangeRequest = self.context.get("cr")
+        req = self.context.get("request")
+
+        decision = attrs.get("decision")
+        new_sid = (attrs.get("newSpecialistId") or "").strip()
+
+        # Only required for inbound substitution approvals
+        if cr and cr.type == "Substitution" and cr.created_by_system and decision == "Approve":
+            if not new_sid:
+                raise serializers.ValidationError({"newSpecialistId": "Replacement specialist is required to approve an inbound substitution."})
+
+            # Validate specialist belongs to same provider and is active Specialist
+            ok = User.objects.filter(
+                id=new_sid,
+                provider_id=cr.provider_id,
+                role="Specialist",
+                is_active=True,
+            ).exists()
+            if not ok:
+                raise serializers.ValidationError({"newSpecialistId": "Invalid specialist for this provider."})
+
+        return attrs
+
     def apply_decision(self, cr: ServiceOrderChangeRequest, decided_by_user):
+        """
+        Applies decision + updates underlying ServiceOrder on Approve.
+        Idempotent: if CR not Requested, it returns unchanged.
+        """
         decision = self.validated_data["decision"]
         note = self.validated_data.get("providerResponseNote") or ""
+        new_sid = (self.validated_data.get("newSpecialistId") or "").strip()
 
         if cr.status != "Requested":
             return cr  # idempotent
+
+        # attach replacement specialist for inbound substitution approvals
+        if cr.type == "Substitution" and cr.created_by_system and decision == "Approve":
+            if new_sid:
+                cr.new_specialist = User.objects.filter(id=new_sid).first()
 
         cr.decided_by_user = decided_by_user
         cr.provider_response_note = note
         cr.decided_at = timezone.now()
         cr.status = "Approved" if decision == "Approve" else "Declined"
-        cr.save(update_fields=["decided_by_user", "provider_response_note", "decided_at", "status"])
+        cr.save(update_fields=["new_specialist", "decided_by_user", "provider_response_note", "decided_at", "status"])
 
         if cr.status != "Approved":
             return cr
@@ -562,10 +606,9 @@ class ServiceOrderChangeRequestDecisionSerializer(serializers.Serializer):
             order.save(update_fields=["end_date", "man_days", "total_cost"])
 
         if cr.type == "Substitution":
-            # Replace FIRST assignment (simple rule)
+            # Replace FIRST assignment (simple deterministic rule)
             first = order.assignments.select_related("specialist").first()
             if first and cr.new_specialist:
-                # keep cost values same as old assignment for now (deterministic)
                 old_daily = first.daily_rate
                 old_travel = first.travelling_cost
                 old_cost = first.specialist_cost
