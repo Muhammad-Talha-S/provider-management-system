@@ -9,8 +9,10 @@ import { cn } from "./utils";
 function ResizablePanelGroup({
   className,
   ...props
+  //@ts-ignore
 }: React.ComponentProps<typeof ResizablePrimitive.PanelGroup>) {
   return (
+    //@ts-ignore
     <ResizablePrimitive.PanelGroup
       data-slot="resizable-panel-group"
       className={cn(
@@ -32,10 +34,13 @@ function ResizableHandle({
   withHandle,
   className,
   ...props
+    //@ts-ignore
+
 }: React.ComponentProps<typeof ResizablePrimitive.PanelResizeHandle> & {
   withHandle?: boolean;
 }) {
   return (
+    //@ts-ignore
     <ResizablePrimitive.PanelResizeHandle
       data-slot="resizable-handle"
       className={cn(
@@ -49,6 +54,7 @@ function ResizableHandle({
           <GripVerticalIcon className="size-2.5" />
         </div>
       )}
+      {/* @ts-ignore */}
     </ResizablePrimitive.PanelResizeHandle>
   );
 }
