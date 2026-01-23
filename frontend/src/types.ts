@@ -1,4 +1,4 @@
-// src/types.ts
+// frontend/src/types.ts
 
 export type UserRole = "Provider Admin" | "Supplier Representative" | "Contract Coordinator" | "Specialist";
 

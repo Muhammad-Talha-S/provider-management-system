@@ -1,3 +1,4 @@
+// frontend/src/context/AppContext.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Provider, User } from "../types";
 import { loginRequest } from "../api/auth";

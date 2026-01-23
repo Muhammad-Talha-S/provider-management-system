@@ -1,3 +1,4 @@
+// frontend/src/api/activityLogs.ts
 import { authFetch } from "./http";
 
 export type ActivityLog = {

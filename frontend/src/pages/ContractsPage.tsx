@@ -1,4 +1,4 @@
-// src/pages/ContractsPage.tsx
+// frontend/src/pages/ContractsPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FileCheck, Building2, RefreshCw } from "lucide-react";

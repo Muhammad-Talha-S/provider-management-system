@@ -1,3 +1,4 @@
+// frontend/src/api/session.ts
 import { API_BASE } from "./config";
 
 export async function meRequest(access: string): Promise<any> {

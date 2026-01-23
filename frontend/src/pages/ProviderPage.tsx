@@ -1,3 +1,4 @@
+// frontend/src/pages/ProviderPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useApp } from "../context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";

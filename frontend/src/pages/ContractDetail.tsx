@@ -1,4 +1,4 @@
-// src/pages/ContractDetail.tsx
+// frontend/src/pages/ContractDetail.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
