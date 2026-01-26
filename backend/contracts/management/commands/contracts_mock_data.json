@@ -1,0 +1,742 @@
+[
+    {
+        "contractId": "C001",
+        "referenceNumber": "CTR-C001-7F2A19",
+        "title": "Cloud Landing Zone Setup (AWS/Azure)",
+        "contractType": "Cloud Architecture",
+        "description": "Design and implement a secure landing zone with networking, IAM, logging, and guardrails.",
+        "targetPersons": 2,
+        "budget": {
+            "minimum": 18000,
+            "maximum": 28000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-01-15T08:00:00.000Z",
+        "endDate": "2026-03-01T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C001-01",
+                    "provider": {
+                        "providerId": "P-101",
+                        "name": "CloudWorks GmbH"
+                    },
+                    "offerAmount": {
+                        "amount": 24500,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-01-20T08:00:00.000Z",
+                        "endDate": "2026-02-28T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-01-18T10:05:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C002",
+        "referenceNumber": "CTR-C002-3C8B4D",
+        "title": "CI/CD Pipeline for Microservices",
+        "contractType": "DevOps & CI/CD",
+        "description": "Implement CI/CD pipelines with build, test, security scan, and deployment stages for multiple services.",
+        "targetPersons": 2,
+        "budget": {
+            "minimum": 12000,
+            "maximum": 22000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-01-22T08:00:00.000Z",
+        "endDate": "2026-02-28T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C002-01",
+                    "provider": {
+                        "providerId": "P-102",
+                        "name": "PipelinePro Studio"
+                    },
+                    "offerAmount": {
+                        "amount": 19800,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-01-24T08:00:00.000Z",
+                        "endDate": "2026-02-26T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-01-23T11:20:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C003",
+        "referenceNumber": "CTR-C003-9A1E7C",
+        "title": "OCR Document Processing Service",
+        "contractType": "OCR & Document Automation",
+        "description": "Build OCR-based document ingestion with extraction, validation rules, and JSON export for downstream systems.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 8000,
+            "maximum": 16000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-01T08:00:00.000Z",
+        "endDate": "2026-03-10T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C003-01",
+                    "provider": {
+                        "providerId": "P-103",
+                        "name": "DocAI Solutions"
+                    },
+                    "offerAmount": {
+                        "amount": 14100,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-03T08:00:00.000Z",
+                        "endDate": "2026-03-07T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-01-31T16:10:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C004",
+        "referenceNumber": "CTR-C004-5D0F22",
+        "title": "API Gateway & Rate Limiting Setup",
+        "contractType": "Platform Engineering",
+        "description": "Configure API gateway with routing, rate limiting, API keys, and monitoring dashboards.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 7000,
+            "maximum": 14000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-05T08:00:00.000Z",
+        "endDate": "2026-03-05T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C004-01",
+                    "provider": {
+                        "providerId": "P-104",
+                        "name": "EdgeNet Consulting"
+                    },
+                    "offerAmount": {
+                        "amount": 11900,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-07T08:00:00.000Z",
+                        "endDate": "2026-03-03T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-02-04T09:45:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C005",
+        "referenceNumber": "CTR-C005-1B6C9F",
+        "title": "PostgreSQL Performance Tuning & Indexing",
+        "contractType": "Database Optimization",
+        "description": "Analyze queries, add indexes, tune configuration, and establish monitoring for PostgreSQL workloads.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 6000,
+            "maximum": 12000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-10T08:00:00.000Z",
+        "endDate": "2026-03-01T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C005-01",
+                    "provider": {
+                        "providerId": "P-105",
+                        "name": "DBTune Partners"
+                    },
+                    "offerAmount": {
+                        "amount": 9800,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-12T08:00:00.000Z",
+                        "endDate": "2026-02-28T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-02-09T14:30:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C006",
+        "referenceNumber": "CTR-C006-77D3A4",
+        "title": "Threat Modeling & Security Hardening",
+        "contractType": "Application Security",
+        "description": "Perform threat modeling, harden security headers, and review authentication/authorization flows.",
+        "targetPersons": 2,
+        "budget": {
+            "minimum": 9000,
+            "maximum": 19000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-12T08:00:00.000Z",
+        "endDate": "2026-03-20T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C006-01",
+                    "provider": {
+                        "providerId": "P-106",
+                        "name": "SecuReview Labs"
+                    },
+                    "offerAmount": {
+                        "amount": 17200,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-15T08:00:00.000Z",
+                        "endDate": "2026-03-18T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-02-12T12:00:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C007",
+        "referenceNumber": "CTR-C007-24E8C1",
+        "title": "Observability Stack (Logs/Metrics/Tracing)",
+        "contractType": "Monitoring & Observability",
+        "description": "Set up dashboards, alerts, centralized logs, metrics and tracing for backend services.",
+        "targetPersons": 2,
+        "budget": {
+            "minimum": 11000,
+            "maximum": 21000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-18T08:00:00.000Z",
+        "endDate": "2026-04-01T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C007-01",
+                    "provider": {
+                        "providerId": "P-107",
+                        "name": "ObserveNow GmbH"
+                    },
+                    "offerAmount": {
+                        "amount": 19950,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-20T08:00:00.000Z",
+                        "endDate": "2026-03-30T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-02-18T09:10:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C008",
+        "referenceNumber": "CTR-C008-6A92F0",
+        "title": "Technical Documentation & API Handbook",
+        "contractType": "Documentation",
+        "description": "Produce developer documentation including API specs, onboarding guide, and architecture overview.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 4000,
+            "maximum": 9000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-20T08:00:00.000Z",
+        "endDate": "2026-03-15T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C008-01",
+                    "provider": {
+                        "providerId": "P-108",
+                        "name": "DocsCraft Studio"
+                    },
+                    "offerAmount": {
+                        "amount": 7600,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-22T08:00:00.000Z",
+                        "endDate": "2026-03-14T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-02-20T10:00:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C009",
+        "referenceNumber": "CTR-C009-0D41B7",
+        "title": "Containerization & Docker Best Practices",
+        "contractType": "DevOps",
+        "description": "Containerize services, optimize Dockerfiles, and define local dev workflow with Compose.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 5000,
+            "maximum": 11000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-02-25T08:00:00.000Z",
+        "endDate": "2026-03-25T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C009-01",
+                    "provider": {
+                        "providerId": "P-109",
+                        "name": "ContainerCrew"
+                    },
+                    "offerAmount": {
+                        "amount": 10300,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-02-27T08:00:00.000Z",
+                        "endDate": "2026-03-23T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-02-25T15:30:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C010",
+        "referenceNumber": "CTR-C010-8B3E2A",
+        "title": "Frontend Performance & Accessibility Review",
+        "contractType": "Frontend Engineering",
+        "description": "Improve performance, accessibility (WCAG basics), and audit bundle size and loading behavior.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 4500,
+            "maximum": 9500,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-01T08:00:00.000Z",
+        "endDate": "2026-03-22T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C010-01",
+                    "provider": {
+                        "providerId": "P-110",
+                        "name": "UXPerf Team"
+                    },
+                    "offerAmount": {
+                        "amount": 8900,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-03T08:00:00.000Z",
+                        "endDate": "2026-03-20T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-01T09:15:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C011",
+        "referenceNumber": "CTR-C011-41C9D0",
+        "title": "Backup & Disaster Recovery Plan",
+        "contractType": "Cloud Operations",
+        "description": "Define backup strategy, restore tests, RPO/RTO targets, and runbooks.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 5000,
+            "maximum": 12000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-05T08:00:00.000Z",
+        "endDate": "2026-04-05T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C011-01",
+                    "provider": {
+                        "providerId": "P-111",
+                        "name": "ResilienceOps"
+                    },
+                    "offerAmount": {
+                        "amount": 10900,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-07T08:00:00.000Z",
+                        "endDate": "2026-04-02T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-05T12:00:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C012",
+        "referenceNumber": "CTR-C012-19A6B4",
+        "title": "Identity & Access Management Cleanup",
+        "contractType": "Security Engineering",
+        "description": "Review roles, least-privilege policies, and implement access reviews.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 6000,
+            "maximum": 13000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-08T08:00:00.000Z",
+        "endDate": "2026-04-10T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C012-01",
+                    "provider": {
+                        "providerId": "P-112",
+                        "name": "IAMWorks"
+                    },
+                    "offerAmount": {
+                        "amount": 12100,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-10T08:00:00.000Z",
+                        "endDate": "2026-04-07T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-08T10:30:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C013",
+        "referenceNumber": "CTR-C013-7D5E11",
+        "title": "API Documentation (OpenAPI/Swagger) Refinement",
+        "contractType": "Documentation",
+        "description": "Improve OpenAPI specs, examples, error models, and tagging for public/private endpoints.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 3500,
+            "maximum": 8000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-10T08:00:00.000Z",
+        "endDate": "2026-03-28T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C013-01",
+                    "provider": {
+                        "providerId": "P-113",
+                        "name": "SpecWriters"
+                    },
+                    "offerAmount": {
+                        "amount": 6900,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-12T08:00:00.000Z",
+                        "endDate": "2026-03-26T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-10T11:00:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C014",
+        "referenceNumber": "CTR-C014-2F0B9A",
+        "title": "Data Migration (Test Data + Seeds)",
+        "contractType": "Database Engineering",
+        "description": "Create migration scripts, seed data, and repeatable local/test environment setup.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 5000,
+            "maximum": 11500,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-12T08:00:00.000Z",
+        "endDate": "2026-04-05T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C014-01",
+                    "provider": {
+                        "providerId": "P-114",
+                        "name": "DataShift UG"
+                    },
+                    "offerAmount": {
+                        "amount": 10200,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-15T08:00:00.000Z",
+                        "endDate": "2026-04-02T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-12T09:45:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C015",
+        "referenceNumber": "CTR-C015-AB91C3",
+        "title": "Load Testing & Capacity Planning",
+        "contractType": "QA & Performance",
+        "description": "Run load tests, identify bottlenecks, and propose capacity plan for peak usage scenarios.",
+        "targetPersons": 2,
+        "budget": {
+            "minimum": 9000,
+            "maximum": 18000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-15T08:00:00.000Z",
+        "endDate": "2026-04-20T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C015-01",
+                    "provider": {
+                        "providerId": "P-115",
+                        "name": "PerfLab Europe"
+                    },
+                    "offerAmount": {
+                        "amount": 16750,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-18T08:00:00.000Z",
+                        "endDate": "2026-04-18T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-15T13:20:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C016",
+        "referenceNumber": "CTR-C016-55D7E8",
+        "title": "Secrets Management & Rotation",
+        "contractType": "Security Operations",
+        "description": "Introduce secret storage, rotation procedure, and environment variable governance.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 6000,
+            "maximum": 14000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-18T08:00:00.000Z",
+        "endDate": "2026-04-25T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C016-01",
+                    "provider": {
+                        "providerId": "P-116",
+                        "name": "KeySafe Security"
+                    },
+                    "offerAmount": {
+                        "amount": 12800,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-20T08:00:00.000Z",
+                        "endDate": "2026-04-22T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-18T10:10:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C017",
+        "referenceNumber": "CTR-C017-0A3D6F",
+        "title": "OCR Accuracy Improvement & Validation Rules",
+        "contractType": "OCR & QA",
+        "description": "Improve OCR extraction quality, add validation, and handle edge cases in scanned documents.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 7000,
+            "maximum": 15000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-22T08:00:00.000Z",
+        "endDate": "2026-04-30T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C017-01",
+                    "provider": {
+                        "providerId": "P-117",
+                        "name": "ScanWise Tech"
+                    },
+                    "offerAmount": {
+                        "amount": 13900,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-25T08:00:00.000Z",
+                        "endDate": "2026-04-28T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-22T09:40:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C018",
+        "referenceNumber": "CTR-C018-93C0A1",
+        "title": "Cloud Cost Optimization Review",
+        "contractType": "FinOps",
+        "description": "Review spend, implement budgets/alerts, and optimize compute/storage usage.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 5000,
+            "maximum": 12000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-25T08:00:00.000Z",
+        "endDate": "2026-05-01T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C018-01",
+                    "provider": {
+                        "providerId": "P-118",
+                        "name": "FinOps Insight"
+                    },
+                    "offerAmount": {
+                        "amount": 10400,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-28T08:00:00.000Z",
+                        "endDate": "2026-04-29T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-25T12:05:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C019",
+        "referenceNumber": "CTR-C019-1F8B2E",
+        "title": "Incident Response Playbooks & Runbooks",
+        "contractType": "Operations",
+        "description": "Create incident response playbooks, escalation paths, and runbooks for common failures.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 4000,
+            "maximum": 9000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-03-28T08:00:00.000Z",
+        "endDate": "2026-04-20T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C019-01",
+                    "provider": {
+                        "providerId": "P-119",
+                        "name": "OpsReady"
+                    },
+                    "offerAmount": {
+                        "amount": 8200,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-03-30T08:00:00.000Z",
+                        "endDate": "2026-04-18T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-03-28T10:35:00.000Z"
+            }
+        }
+    },
+    {
+        "contractId": "C020",
+        "referenceNumber": "CTR-C020-6B77D9",
+        "title": "Release Automation & Versioning Strategy",
+        "contractType": "DevOps & Release",
+        "description": "Define release process, semantic versioning, changelog generation, and automated release tagging.",
+        "targetPersons": 1,
+        "budget": {
+            "minimum": 4500,
+            "maximum": 10000,
+            "currency": "EUR"
+        },
+        "startDate": "2026-04-01T08:00:00.000Z",
+        "endDate": "2026-04-30T18:00:00.000Z",
+        "workflow": {
+            "coordinator": {
+                "selectedOffer": {
+                    "offerId": "O-C020-01",
+                    "provider": {
+                        "providerId": "P-120",
+                        "name": "ReleaseFlow Team"
+                    },
+                    "offerAmount": {
+                        "amount": 9300,
+                        "currency": "EUR"
+                    },
+                    "proposedTimeline": {
+                        "startDate": "2026-04-03T08:00:00.000Z",
+                        "endDate": "2026-04-28T18:00:00.000Z"
+                    }
+                }
+            },
+            "finalApproval": {
+                "approvedAt": "2026-04-01T09:00:00.000Z"
+            }
+        }
+    }
+]

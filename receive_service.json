@@ -1,0 +1,62 @@
+{
+  "requestId": 0,
+  "offer": {
+    "id": 0,
+    "serviceRequest": {
+      "id": 0,
+      "requestNumber": "string",
+      "title": "string",
+      "type": "SINGLE",
+      "requestedByUsername": "string",
+      "requestedByRole": "string",
+      "projectId": "string",
+      "projectName": "string",
+      "contractId": "string",
+      "contractSupplier": "string",
+      "startDate": "2026-01-25",
+      "endDate": "2026-01-25",
+      "performanceLocation": "string",
+      "maxOffers": 0,
+      "maxAcceptedOffers": 0,
+      "requiredLanguages": [
+        "string"
+      ],
+      "mustHaveCriteria": [
+        "string"
+      ],
+      "niceToHaveCriteria": [
+        "string"
+      ],
+      "taskDescription": "string",
+      "furtherInformation": "string",
+      "status": "DRAFT",
+      "preferredOfferId": 0,
+      "roles": [
+        {
+          "domain": "string",
+          "roleName": "string",
+          "technology": "string",
+          "experienceLevel": "string",
+          "manDays": 0,
+          "onsiteDays": 0
+        }
+      ],
+      "biddingCycleDays": 0,
+      "biddingStartAt": "2026-01-25T10:23:02.899Z",
+      "biddingEndAt": "2026-01-25T10:23:02.899Z",
+      "biddingActive": true
+    },
+    "specialistName": "string",
+    "materialNumber": "string",
+    "dailyRate": 0.1,
+    "travellingCost": 0.1,
+    "totalCost": 0.1,
+    "contractualRelationship": "string",
+    "subcontractorCompany": "string",
+    "matchMustHaveCriteria": true,
+    "matchNiceToHaveCriteria": true,
+    "matchLanguageSkills": true,
+    "supplierName": "string",
+    "supplierRepresentative": "string"
+  }
+}

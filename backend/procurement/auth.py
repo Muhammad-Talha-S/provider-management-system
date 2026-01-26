@@ -18,7 +18,7 @@ class Group3ApiKeyAuthentication(BaseAuthentication):
         if not expected:
             raise AuthenticationFailed("Server missing GROUP3_CONNECTION_API_KEY setting.")
 
-        header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+        header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "GROUP3-API-KEY")
         meta_key = "HTTP_" + header_name.upper().replace("-", "_")
         provided = request.META.get(meta_key)
 

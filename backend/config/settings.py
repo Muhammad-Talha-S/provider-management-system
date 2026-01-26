@@ -101,7 +101,7 @@ DATABASES = {
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
-
+print("Database settings:", DATABASES["default"])
 # ------------------------------------------------------------
 # Auth
 # ------------------------------------------------------------
@@ -192,6 +192,10 @@ GROUP3_SUBSTITUTION_URL = os.getenv(
     "https://servicemanagementsystem-1-2s7d.onrender.com/api/public/order-changes/substitution",
 )
 
+GROUP3_REQUESTS_URL = os.getenv(
+    "GROUP3_REQUESTS_URL",
+    "https://servicemanagementsystem-1-2s7d.onrender.com/api/requests",
+)
 GROUP3_CONNECTION_API_KEY = os.getenv("GROUP3_CONNECTION_API_KEY", "uni-project-2026-secret")
 GROUP3_API_KEY_HEADER = os.getenv("GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
 

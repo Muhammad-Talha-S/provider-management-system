@@ -7,6 +7,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from typing import Any, Dict
+from copy import deepcopy
+from decimal import Decimal
 
 from activitylog.utils import log_activity
 from contracts.models import ContractProviderStatus
@@ -104,59 +107,75 @@ class Group3SyncServiceRequestsView(APIView):
 
 
 def _map_offer_to_group3_payload(offer: ServiceOffer) -> dict:
-    """
-    Payload sent to Group3.
-    - No deltas
-    - specialists[] list
-    - one totalCost for entire request
-    """
     sr = offer.service_request
     resp = offer.response if isinstance(offer.response, dict) else {}
 
-    # Group3 sample structure includes serviceRequest nested.
+    # SINGLE in your app => specialists list should contain exactly 1 entry, but keep it defensive.
+    specialists = resp.get("specialists")
+    spec0 = specialists[0] if isinstance(specialists, list) and specialists else None
+    if not isinstance(spec0, dict):
+        spec0 = {}
+
+    # roles in your ServiceRequest are stored as JSON list already
+    roles = sr.roles if isinstance(sr.roles, list) else []
+
     service_request_payload = {
         "id": sr.external_id or 0,
-        "requestNumber": sr.request_number or sr.id,
-        "title": sr.title,
-        "type": sr.type,
-        "requestedByUsername": sr.requested_by_username,
-        "requestedByRole": sr.requested_by_role,
-        "projectId": sr.project_id,
-        "projectName": sr.project_name,
-        "contractId": sr.contract_id,
-        "contractSupplier": sr.contract_supplier,
+        "requestNumber": sr.request_number or sr.id or None,
+        "title": sr.title or None,
+        "type": sr.type or None,
+        "requestedByUsername": sr.requested_by_username or None,
+        "requestedByRole": sr.requested_by_role or None,
+        "projectId": sr.project_id or None,
+        "projectName": sr.project_name or None,
+        "contractId": sr.contract_id or None,
+        "contractSupplier": sr.contract_supplier or None,
         "startDate": str(sr.start_date) if sr.start_date else None,
         "endDate": str(sr.end_date) if sr.end_date else None,
-        "performanceLocation": sr.performance_location,
-        "maxOffers": sr.max_offers or 0,
-        "maxAcceptedOffers": sr.max_accepted_offers or 0,
-        "requiredLanguages": sr.required_languages or [],
-        "mustHaveCriteria": sr.must_have_criteria or [],
-        "niceToHaveCriteria": sr.nice_to_have_criteria or [],
-        "taskDescription": sr.task_description or "",
-        "furtherInformation": sr.further_information or "",
-        "status": sr.status,
-        "roles": sr.roles or [],
-        "biddingCycleDays": sr.bidding_cycle_days or 0,
+        "performanceLocation": sr.performance_location or None,
+        "maxOffers": sr.max_offers if sr.max_offers is not None else 0,
+        "maxAcceptedOffers": sr.max_accepted_offers if sr.max_accepted_offers is not None else 0,
+        "requiredLanguages": sr.required_languages if isinstance(sr.required_languages, list) else [],
+        "mustHaveCriteria": sr.must_have_criteria if isinstance(sr.must_have_criteria, list) else [],
+        "niceToHaveCriteria": sr.nice_to_have_criteria if isinstance(sr.nice_to_have_criteria, list) else [],
+        "taskDescription": sr.task_description if sr.task_description != "" else None,
+        "furtherInformation": sr.further_information if sr.further_information != "" else None,
+        "status": sr.status or None,
+        "preferredOfferId": None,  # not stored in your ServiceRequest model
+        "roles": roles,
+        "biddingCycleDays": sr.bidding_cycle_days if sr.bidding_cycle_days is not None else 0,
         "biddingStartAt": sr.bidding_start_at.isoformat() if sr.bidding_start_at else None,
         "biddingEndAt": sr.bidding_end_at.isoformat() if sr.bidding_end_at else None,
         "biddingActive": bool(sr.bidding_active) if sr.bidding_active is not None else None,
     }
 
-    payload = {
-        "id": offer.id,
+    offer_payload = {
+        "id": offer.id or 0,
         "serviceRequest": service_request_payload,
-        "specialists": resp.get("specialists", []),
-        "totalCost": resp.get("totalCost", 0),
-        "contractualRelationship": resp.get("contractualRelationship", ""),
-        "subcontractorCompany": resp.get("subcontractorCompany", ""),
-        "supplierName": resp.get("supplierName", offer.provider.name),
-        "supplierRepresentative": resp.get("supplierRepresentative", offer.created_by.name if offer.created_by else ""),
-        "offerStatus": offer.status,
-        "providerId": offer.provider_id,
-        "providerName": offer.provider.name,
+
+        # These are expected at offer level by Group3 swagger:
+        "specialistName": spec0.get("name") or None,
+        "materialNumber": spec0.get("materialNumber") or None,
+        "dailyRate": spec0.get("dailyRate") if spec0.get("dailyRate") is not None else None,
+        "travellingCost": spec0.get("travellingCost") if spec0.get("travellingCost") is not None else None,
+
+        "totalCost": resp.get("totalCost") if resp.get("totalCost") is not None else None,
+
+        "contractualRelationship": resp.get("contractualRelationship") if resp.get("contractualRelationship") not in ["", None] else None,
+        "subcontractorCompany": resp.get("subcontractorCompany") if resp.get("subcontractorCompany") not in ["", None] else None,
+
+        "matchMustHaveCriteria": spec0.get("matchMustHaveCriteria") if spec0.get("matchMustHaveCriteria") is not None else None,
+        "matchNiceToHaveCriteria": spec0.get("matchNiceToHaveCriteria") if spec0.get("matchNiceToHaveCriteria") is not None else None,
+        "matchLanguageSkills": spec0.get("matchLanguageSkills") if spec0.get("matchLanguageSkills") is not None else None,
+
+        "supplierName": (resp.get("supplierName") or (offer.provider.name if offer.provider else None)) or None,
+        "supplierRepresentative": (resp.get("supplierRepresentative") or (offer.created_by.name if offer.created_by else None)) or None,
     }
-    return payload
+
+    return {
+        "requestId": sr.external_id or 0,
+        "offer": offer_payload,
+    }
 
 
 def _group3_bids_url() -> str:
@@ -265,7 +284,7 @@ class Group3OfferDecisionWebhookView(APIView):
 
     POST /api/integrations/group3/offers/<offer_id>/decision/
     Headers:
-      ServiceRequestbids3a: <API_KEY>
+      GROUP3-API-KEY: <API_KEY>
 
     Body:
       {
