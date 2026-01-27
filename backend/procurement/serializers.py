@@ -313,10 +313,17 @@ class ServiceOrderAssignmentSerializer(serializers.ModelSerializer):
 
 
 class ServiceOrderSerializer(serializers.ModelSerializer):
-    serviceOfferId = serializers.IntegerField(source="service_offer_id")
-    serviceRequestId = serializers.CharField(source="service_request_id")
-    providerId = serializers.CharField(source="provider_id")
+    serviceOfferId = serializers.IntegerField(source="service_offer_id", read_only=True)
+    serviceRequestId = serializers.CharField(source="service_request_id", read_only=True)
+    providerId = serializers.CharField(source="provider_id", read_only=True)
 
+    # IMPORTANT: make output match frontend expectations
+    startDate = serializers.DateField(source="start_date", allow_null=True, required=False, read_only=True)
+    endDate = serializers.DateField(source="end_date", allow_null=True, required=False, read_only=True)
+    manDays = serializers.IntegerField(source="man_days", read_only=True)
+    totalCost = serializers.DecimalField(source="total_cost", max_digits=12, decimal_places=2, read_only=True)
+
+    # keep "location" as-is (frontend expects location)
     assignments = ServiceOrderAssignmentSerializer(many=True, read_only=True)
 
     class Meta:
@@ -327,15 +334,16 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             "serviceRequestId",
             "providerId",
             "title",
-            "start_date",
-            "end_date",
+            "startDate",
+            "endDate",
             "location",
-            "man_days",
-            "total_cost",
+            "manDays",
+            "totalCost",
             "status",
             "assignments",
             "created_at",
         ]
+
 
 
 def upsert_group3_service_request(item: dict) -> ServiceRequest:

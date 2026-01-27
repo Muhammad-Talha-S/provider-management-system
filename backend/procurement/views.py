@@ -34,6 +34,23 @@ def _assert_can_view_service_requests(user):
         raise PermissionDenied("Contract Coordinator cannot access Service Requests.")
 
 
+def _sr_total_man_days(sr: ServiceRequest) -> int:
+    """
+    Derive man-days from ServiceRequest.roles.
+    We keep SR.roles as the source of truth (same basis used in offer cost calculations).
+    """
+    roles = sr.roles if isinstance(sr.roles, list) else []
+    total = 0
+    for r in roles:
+        if not isinstance(r, dict):
+            continue
+        try:
+            total += int(r.get("manDays") or 0)
+        except Exception:
+            continue
+    return int(total)
+
+
 class ServiceRequestListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ServiceRequestSerializer
@@ -196,7 +213,7 @@ def _send_offer_to_group3(offer: ServiceOffer) -> None:
     url = _group3_bids_url()
     payload = _map_offer_to_group3_payload(offer)
 
-    header_name = getattr(settings, "GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
+    header_name = "ServiceRequestbids3a"
     api_key = getattr(settings, "GROUP3_CONNECTION_API_KEY", "")
 
     headers = {
@@ -214,6 +231,8 @@ def _send_offer_to_group3(offer: ServiceOffer) -> None:
     except Exception:
         offer.group3_last_response = {"raw": resp.text[:2000]}
     offer.save(update_fields=["group3_last_status", "group3_last_response"])
+
+    print("Group3 bid POST response:", resp.status_code, resp.text)
 
     if resp.status_code >= 400:
         print("Group3 bid POST failed:", resp.status_code, resp.text)
@@ -323,7 +342,15 @@ class Group3OfferDecisionWebhookView(APIView):
             if decision == "ACCEPTED":
                 sr = offer.service_request
                 resp = offer.response if isinstance(offer.response, dict) else {}
-                total_cost = resp.get("totalCost", 0) or 0
+
+                # total_cost from offer response (keep same business values)
+                try:
+                    total_cost = Decimal(str(resp.get("totalCost") or 0))
+                except Exception:
+                    total_cost = Decimal("0")
+
+                # man_days derived from SR.roles (not hardcoded 0)
+                man_days = _sr_total_man_days(sr)
 
                 order, created = ServiceOrder.objects.get_or_create(
                     service_offer=offer,
@@ -334,11 +361,24 @@ class Group3OfferDecisionWebhookView(APIView):
                         "start_date": sr.start_date,
                         "end_date": sr.end_date,
                         "location": sr.performance_location or "Onsite",
-                        "man_days": 0,
+                        "man_days": man_days,
                         "total_cost": total_cost,
                         "status": "ACTIVE",
                     },
                 )
+
+                # If order already existed (idempotency), optionally ensure fields are not stale
+                # (safe in case SR roles changed after offer submission; you can remove if you prefer strict immutability)
+                if not created:
+                    update_fields = []
+                    if (order.man_days or 0) == 0 and man_days:
+                        order.man_days = man_days
+                        update_fields.append("man_days")
+                    if (order.total_cost or 0) == 0 and total_cost:
+                        order.total_cost = total_cost
+                        update_fields.append("total_cost")
+                    if update_fields:
+                        order.save(update_fields=update_fields)
 
                 if created:
                     specs = resp.get("specialists")
@@ -346,19 +386,26 @@ class Group3OfferDecisionWebhookView(APIView):
                         for s in specs:
                             if not isinstance(s, dict):
                                 continue
-                            uid = str(s.get("userId") or "")
+
+                            uid = str(s.get("userId") or "").strip()
                             if not uid:
                                 continue
+
                             specialist = User.objects.filter(id=uid, role="Specialist").first()
                             if not specialist:
                                 continue
 
+                            # Keep same values as offer (core business logic)
+                            daily_rate = Decimal(str(s.get("dailyRate") or 0))
+                            travelling_cost = Decimal(str(s.get("travellingCost") or 0))
+                            specialist_cost = Decimal(str(s.get("specialistCost") or 0))
+
                             ServiceOrderAssignment.objects.create(
                                 order=order,
                                 specialist=specialist,
-                                daily_rate=s.get("dailyRate") or 0,
-                                travelling_cost=s.get("travellingCost") or 0,
-                                specialist_cost=s.get("specialistCost") or 0,
+                                daily_rate=daily_rate,
+                                travelling_cost=travelling_cost,
+                                specialist_cost=specialist_cost,
                                 match_must_have_criteria=bool(s.get("matchMustHaveCriteria", True)),
                                 match_nice_to_have_criteria=bool(s.get("matchNiceToHaveCriteria", True)),
                                 match_language_skills=bool(s.get("matchLanguageSkills", True)),

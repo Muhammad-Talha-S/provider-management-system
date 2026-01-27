@@ -1,6 +1,21 @@
 // frontend/src/api/serviceOrders.ts
 import { authFetch } from "./http";
 
+export type ServiceOrderAssignment = {
+  specialistId: string;
+  specialistName: string;
+  materialNumber: string;
+
+  // keep these snake_case because your UI pages use a.daily_rate etc
+  daily_rate: string;
+  travelling_cost: string;
+  specialist_cost: string;
+
+  match_must_have_criteria: boolean;
+  match_nice_to_have_criteria: boolean;
+  match_language_skills: boolean;
+};
+
 export type ServiceOrder = {
   id: number;
   serviceOfferId: number;
@@ -19,48 +34,81 @@ export type ServiceOrder = {
   status: "ACTIVE" | "COMPLETED";
   createdAt: string;
 
-  assignments?: Array<{
-    specialistId: string;
-    specialistName: string;
-    materialNumber: string;
-    daily_rate: string;
-    travelling_cost: string;
-    specialist_cost: string;
-    match_must_have_criteria: boolean;
-    match_nice_to_have_criteria: boolean;
-    match_language_skills: boolean;
-  }>;
+  assignments?: ServiceOrderAssignment[];
 };
 
+function pick<T = any>(raw: any, keys: string[], fallback: T): T {
+  for (const k of keys) {
+    if (raw && raw[k] !== undefined && raw[k] !== null) return raw[k] as T;
+  }
+  return fallback;
+}
+
+function mapAssignment(raw: any): ServiceOrderAssignment {
+  // accept either camelCase or snake_case coming from backend
+  const specialistId = String(pick(raw, ["specialistId", "specialist_id"], ""));
+  const specialistName = String(pick(raw, ["specialistName", "specialist_name"], ""));
+  const materialNumber = String(pick(raw, ["materialNumber", "material_number"], ""));
+
+  const dailyRate = pick(raw, ["daily_rate", "dailyRate"], "0");
+  const travellingCost = pick(raw, ["travelling_cost", "travellingCost"], "0");
+  const specialistCost = pick(raw, ["specialist_cost", "specialistCost"], "0");
+
+  return {
+    specialistId,
+    specialistName,
+    materialNumber,
+    daily_rate: String(dailyRate),
+    travelling_cost: String(travellingCost),
+    specialist_cost: String(specialistCost),
+
+    match_must_have_criteria: Boolean(pick(raw, ["match_must_have_criteria", "matchMustHaveCriteria"], true)),
+    match_nice_to_have_criteria: Boolean(pick(raw, ["match_nice_to_have_criteria", "matchNiceToHaveCriteria"], true)),
+    match_language_skills: Boolean(pick(raw, ["match_language_skills", "matchLanguageSkills"], true)),
+  };
+}
+
 function mapOrder(raw: any): ServiceOrder {
-  const assignments = Array.isArray(raw?.assignments) ? raw.assignments : [];
-  const firstSpecialistId = assignments?.[0]?.specialistId;
+  const assignmentsRaw = Array.isArray(raw?.assignments) ? raw.assignments : [];
+  const assignments = assignmentsRaw.map(mapAssignment);
+
+  const firstSpecialistId =
+    assignments?.[0]?.specialistId ||
+    (assignmentsRaw?.[0]?.specialistId ?? assignmentsRaw?.[0]?.specialist_id);
 
   const statusRaw = String(raw?.status || "").toUpperCase();
   const status: "ACTIVE" | "COMPLETED" = statusRaw === "COMPLETED" ? "COMPLETED" : "ACTIVE";
 
   return {
-    id: Number(raw.id),
-    serviceOfferId: Number(raw.serviceOfferId),
-    serviceRequestId: String(raw.serviceRequestId),
-    providerId: String(raw.providerId),
+    id: Number(raw?.id ?? 0),
 
-    specialistId: firstSpecialistId,
+    // backend serializer uses camelCase for these
+    serviceOfferId: Number(pick(raw, ["serviceOfferId", "service_offer_id", "serviceOfferID"], 0)),
+    serviceRequestId: String(pick(raw, ["serviceRequestId", "service_request_id"], "")),
+    providerId: String(pick(raw, ["providerId", "provider_id"], "")),
 
-    title: String(raw.title || ""),
-    startDate: raw.start_date ?? null,
-    endDate: raw.end_date ?? null,
-    location: String(raw.location || ""),
-    manDays: Number(raw.man_days ?? 0),
+    specialistId: firstSpecialistId ? String(firstSpecialistId) : undefined,
 
-    totalCost: String(raw.total_cost ?? "0"),
+    title: String(pick(raw, ["title"], "")),
+
+    // IMPORTANT FIX: read camelCase first (serializer), fallback to snake_case
+    startDate: pick(raw, ["startDate", "start_date"], null),
+    endDate: pick(raw, ["endDate", "end_date"], null),
+
+    location: String(pick(raw, ["location"], "")),
+
+    // IMPORTANT FIX
+    manDays: Number(pick(raw, ["manDays", "man_days"], 0)),
+    totalCost: String(pick(raw, ["totalCost", "total_cost"], "0")),
+
     status,
-    createdAt: String(raw.created_at || ""),
+
+    // serializer sends created_at (snake) because you included "created_at" in fields
+    createdAt: String(pick(raw, ["createdAt", "created_at"], "")),
 
     assignments,
   };
 }
-
 
 export async function getServiceOrders(access: string): Promise<ServiceOrder[]> {
   const res = await authFetch("/api/service-orders/", access, { method: "GET" });
