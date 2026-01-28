@@ -5,7 +5,6 @@ import { loginRequest } from "../api/auth";
 import { meRequest, refreshRequest } from "../api/session";
 
 type Tokens = { access: string; refresh: string };
-
 type LoginResult = { success: true } | { success: false; error: string };
 
 interface AppContextType {
@@ -55,12 +54,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return { success: true };
     } catch (e: any) {
-      // Ensure UI gets a message
       const msg = e?.message || "Invalid email or password.";
       return { success: false, error: msg };
     }
   };
 
+  // Boot restore (your original logic)
   useEffect(() => {
     const restore = async () => {
       try {
@@ -98,6 +97,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * ✅ NEW: Listen for token updates triggered by authFetch, so
+   * the in-memory tokens update immediately (no browser refresh needed).
+   */
+  useEffect(() => {
+    const onTokenUpdated = () => {
+      const access = localStorage.getItem(LS_ACCESS);
+      const refresh = localStorage.getItem(LS_REFRESH);
+      if (!access || !refresh) return;
+
+      setTokens((prev) => {
+        // preserve refresh from state if present, else use storage
+        const r = prev?.refresh || refresh;
+        return { access, refresh: r };
+      });
+    };
+
+    const onLoggedOut = () => {
+      logout();
+    };
+
+    window.addEventListener("auth:token-updated", onTokenUpdated as any);
+    window.addEventListener("auth:logged-out", onLoggedOut);
+
+    // Also handle multi-tab changes (optional but nice)
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === LS_ACCESS || ev.key === LS_REFRESH) {
+        onTokenUpdated();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("auth:token-updated", onTokenUpdated as any);
+      window.removeEventListener("auth:logged-out", onLoggedOut);
+      window.removeEventListener("storage", onStorage);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

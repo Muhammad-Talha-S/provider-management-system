@@ -2,6 +2,7 @@ import requests
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -332,8 +333,10 @@ class Group3OfferDecisionWebhookView(APIView):
             raise NotFound("Offer not found.")
 
         # Idempotent handling
-        if offer.status in ["ACCEPTED", "REJECTED"] and decision in ["SUBMITTED"]:
-            return Response({"ok": True, "offerStatus": offer.status})
+        if offer.status in ["ACCEPTED", "REJECTED"] and decision == "SUBMITTED":
+            return Response({"ok": True, "offerStatus": offer.status, "serviceOfferId": offer.id})
+
+        created_order = None
 
         with transaction.atomic():
             offer.status = decision if decision != "SUBMITTED" else "SUBMITTED"
@@ -343,13 +346,11 @@ class Group3OfferDecisionWebhookView(APIView):
                 sr = offer.service_request
                 resp = offer.response if isinstance(offer.response, dict) else {}
 
-                # total_cost from offer response (keep same business values)
                 try:
                     total_cost = Decimal(str(resp.get("totalCost") or 0))
                 except Exception:
                     total_cost = Decimal("0")
 
-                # man_days derived from SR.roles (not hardcoded 0)
                 man_days = _sr_total_man_days(sr)
 
                 order, created = ServiceOrder.objects.get_or_create(
@@ -367,8 +368,7 @@ class Group3OfferDecisionWebhookView(APIView):
                     },
                 )
 
-                # If order already existed (idempotency), optionally ensure fields are not stale
-                # (safe in case SR roles changed after offer submission; you can remove if you prefer strict immutability)
+                # keep idempotency safe updates
                 if not created:
                     update_fields = []
                     if (order.man_days or 0) == 0 and man_days:
@@ -386,11 +386,9 @@ class Group3OfferDecisionWebhookView(APIView):
                         for s in specs:
                             if not isinstance(s, dict):
                                 continue
-
                             uid = str(s.get("userId") or "").strip()
                             if not uid:
                                 continue
-
                             specialist = User.objects.filter(id=uid, role="Specialist").first()
                             if not specialist:
                                 continue
@@ -411,7 +409,22 @@ class Group3OfferDecisionWebhookView(APIView):
                                 match_language_skills=bool(s.get("matchLanguageSkills", True)),
                             )
 
-        return Response({"ok": True, "offerStatus": offer.status})
+                created_order = order  # <-- capture for response
+
+        # build webhook response
+        payload = {"ok": True, "offerStatus": offer.status, "serviceOfferId": offer.id}
+
+        if offer.status == "ACCEPTED" and created_order is not None:
+            # ensure assignments included (prefetch)
+            created_order = (
+                ServiceOrder.objects
+                .select_related("provider", "service_request", "service_offer")
+                .prefetch_related("assignments")
+                .get(id=created_order.id)
+            )
+            payload["serviceOrder"] = ServiceOrderSerializer(created_order).data
+
+        return Response(payload)
 
 
 class SuggestedSpecialistsView(APIView):
@@ -752,14 +765,10 @@ class Group3InboundSubstitutionCreateView(APIView):
       {
         "orderId": 123,
         "body": {
-          "newSpecialistName": "string",
           "comment": "string"
         }
       }
 
-    NOTE: Group3 sends a name, but we need a specialist id.
-    For now we store the comment + keep new_specialist null.
-    Provider must pick actual replacement specialist in UI when approving.
     """
     authentication_classes = [Group3ApiKeyAuthentication]
     permission_classes = [AllowAny]
@@ -777,7 +786,6 @@ class Group3InboundSubstitutionCreateView(APIView):
             return Response({"detail": "Service order not found"}, status=404)
 
         comment = body.get("comment") or ""
-        requested_name = body.get("newSpecialistName") or ""
 
         # capture current specialist as old_specialist
         old_spec = None
@@ -791,7 +799,7 @@ class Group3InboundSubstitutionCreateView(APIView):
             type="Substitution",
             status="Requested",
             created_by_system=True,
-            reason=f"{comment}".strip() or f"Requested substitution: {requested_name}".strip(),
+            reason=f"{comment}".strip() or f"Requested substitution".strip(),
             old_specialist=old_spec,
         )
 

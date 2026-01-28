@@ -1,6 +1,8 @@
 [
     {
-        "contractId": "C001",
+        "contractId": "C021",
+        "contractStartDate": "2024-01-15",
+        "contractEndDate": "2026-01-14",
         "title": "Software Development Services 2024",
         "kind": "SERVICE",
         "status": "PUBLISHED",
@@ -128,7 +130,9 @@
         ]
     },
     {
-        "contractId": "C003",
+        "contractId": "C022",
+        "contractStartDate": "2024-01-15",
+        "contractEndDate": "2026-01-14",
         "title": "Web Application Development Framework Agreement",
         "kind": "SERVICE",
         "status": "DRAFT",

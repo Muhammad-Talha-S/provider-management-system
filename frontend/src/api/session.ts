@@ -1,11 +1,9 @@
 // frontend/src/api/session.ts
 import { API_BASE } from "./config";
+import { authFetch } from "./http";
 
 export async function meRequest(access: string): Promise<any> {
-  const res = await fetch(`${API_BASE}/api/auth/me/`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${access}` },
-  });
+  const res = await authFetch(`/api/auth/me/`, access, { method: "GET" });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.detail || `Failed /me (${res.status})`);
   return data;
