@@ -1,11 +1,12 @@
 import requests
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,10 +22,16 @@ from activitylog.utils import log_activity
 
 
 def _can_view_contract(user, contract: Contract) -> bool:
-    # Draft contracts hidden from providers
     if contract.status == "DRAFT":
         return False
     return True
+
+
+def _group2_offer_url(contract_id: str) -> str:
+    tpl = getattr(settings, "GROUP2_CONTRACT_OFFER_URL_TEMPLATE", "") or ""
+    if not tpl:
+        raise RuntimeError("GROUP2_CONTRACT_OFFER_URL_TEMPLATE is not configured.")
+    return tpl.format(contract_id=contract_id)
 
 
 class ContractListView(generics.ListAPIView):
@@ -32,7 +39,6 @@ class ContractListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # All providers see all non-draft contracts (isolation is handled in serializer by not exposing award list)
         return Contract.objects.exclude(status="DRAFT").order_by("-publishing_date", "-created_at")
 
 
@@ -76,7 +82,89 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         if user.role not in ["Provider Admin", "Contract Coordinator"]:
             raise PermissionDenied("Only Provider Admin or Contract Coordinator can submit contract offers.")
-        serializer.save()
+
+        contract = self.get_contract()
+        status_value = serializer.validated_data.get("status", "SUBMITTED")
+        proposed_pricing_rules = serializer.validated_data["proposedPricingRules"]
+        note = serializer.validated_data.get("note") or ""
+
+        provider = user.provider
+
+        # Try to derive provider email/name with best-effort
+        provider_name = getattr(provider, "name", None) or getattr(provider, "provider_name", None) or str(provider.id)
+        provider_email = (
+            getattr(provider, "contact_email", None)
+            or getattr(provider, "email", None)
+            or getattr(provider, "contactEmail", None)
+            or getattr(user, "email", None)
+            or ""
+        )
+
+        outbound_payload = {
+            "providerEmail": provider_email,
+            "providerName": provider_name,
+            "category": "IT Service",
+            "proposedPricingRules": proposed_pricing_rules,
+        }
+        if note:
+            outbound_payload["note"] = note
+
+        # If DRAFT: store locally only, do not send to Group2
+        if status_value == "DRAFT":
+            snapshot = contract.external_snapshot or {}
+            ContractOffer.objects.create(
+                contract=contract,
+                provider=provider,
+                created_by_user_id=getattr(user, "id", None),
+                request_snapshot=snapshot,
+                response={"outbound": outbound_payload, "group2": None},
+                deltas=[],
+                note=note,
+                status="DRAFT",
+                submitted_at=None,
+            )
+            return
+
+        # SUBMITTED: send to Group2 then store locally
+        url = _group2_offer_url(contract.id)
+        headers = {}
+        api_key = getattr(settings, "GROUP2_API_KEY", None)
+        if api_key:
+            headers["GROUP2-API-KEY"] = api_key
+
+        try:
+            resp = requests.post(url, json=outbound_payload, headers=headers, timeout=20)
+        except Exception as e:
+            raise ValidationError(f"Failed to reach Group2 offer endpoint: {e}")
+
+        if resp.status_code >= 400:
+            # Bubble up error cleanly
+            detail = None
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = {"detail": resp.text[:500] if resp.text else "Unknown error from Group2"}
+            raise ValidationError({"detail": "Group2 rejected offer submission.", "group2": detail})
+
+        group2_response = None
+        try:
+            group2_response = resp.json()
+        except Exception:
+            group2_response = {"detail": "Group2 returned non-JSON response."}
+
+        snapshot = contract.external_snapshot or {}
+
+        ContractOffer.objects.create(
+            contract=contract,
+            provider=provider,
+            created_by_user_id=getattr(user, "id", None),
+            request_snapshot=snapshot,
+            response={"outbound": outbound_payload, "group2": group2_response},
+            deltas=[],
+            note=note,
+            status="SUBMITTED",
+            submitted_at=timezone.now(),
+        )
 
 
 class Group2SyncContractsView(APIView):
@@ -92,6 +180,7 @@ class Group2SyncContractsView(APIView):
 
         url = settings.GROUP2_CONTRACTS_URL
         resp = requests.get(url, timeout=20)
+        print(resp.status_code, resp.text)
         if resp.status_code >= 400:
             return Response({"detail": f"Group2 returned {resp.status_code}"}, status=502)
 
@@ -118,7 +207,8 @@ class Group2SyncContractsView(APIView):
             publishing_date = parse_date(item.get("publishingDate")) if item.get("publishingDate") else None
             offer_deadline_at = parse_datetime(item.get("offerDeadlineAt")) if item.get("offerDeadlineAt") else None
 
-            c, _created = Contract.objects.update_or_create(
+            print("Upserting contract", cid)
+            Contract.objects.update_or_create(
                 id=str(cid),
                 defaults={
                     "title": item.get("title") or "",
@@ -146,6 +236,7 @@ class Group2SyncContractsView(APIView):
             entity_id="*",
             message=f"Synced contracts from Group2: upserted={upserted}, skipped={skipped}",
         )
+        print("Synced contracts from Group2: upserted=", upserted, "skipped=", skipped)
         return Response({"upserted": upserted, "skipped": skipped})
 
 
@@ -177,7 +268,6 @@ class Group2SetProviderStatusView(APIView):
             defaults={"status": status_value, "note": note},
         )
 
-        # Optional: if any provider is ACTIVE, set contract overall to ACTIVE (safe default)
         if status_value == "ACTIVE" and contract.status in ["PUBLISHED", "IN_NEGOTIATION"]:
             contract.status = "ACTIVE"
             contract.save(update_fields=["status"])

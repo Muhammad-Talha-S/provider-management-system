@@ -99,7 +99,11 @@ class ContractOffer(models.Model):
     created_by_user_id = models.CharField(max_length=50, blank=True, null=True)
 
     request_snapshot = models.JSONField(null=True, blank=True)
+
+    # We'll store the outbound payload + Group2 response here (simple approach)
     response = models.JSONField(null=True, blank=True)
+
+    # Legacy field: keep it for migration safety, but we won't use it anymore
     deltas = models.JSONField(null=True, blank=True)
 
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="SUBMITTED")

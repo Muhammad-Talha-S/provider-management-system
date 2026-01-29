@@ -205,11 +205,14 @@ GROUP3_SUBSTITUTION_DECISION_URL = os.getenv("GROUP3_SUBSTITUTION_DECISION_URL",
 # ------------------------------------------------------------
 # --- Group 2 Integration (Contracts) ---
 # ------------------------------------------------------------
-GROUP2_API_KEY = os.getenv("GROUP2_API_KEY", "")
-GROUP2_CONTRACTS_URL = os.getenv(
-    "GROUP2_CONTRACTS_URL",
-    "https://contractmanagement.example/api/contracts",
-)
+# Group2 - Contract Management (public API)
+GROUP2_CONTRACTS_URL = "http://127.0.0.1:8001/api/public/contracts"
+
+# Group2 offers endpoint template
+GROUP2_CONTRACT_OFFER_URL_TEMPLATE = "http://127.0.0.1:8001/api/public/contracts/{contract_id}/offers"
+
+# Existing (you already use something like this in Group2ApiKeyAuthentication)
+GROUP2_API_KEY = "uni-project-2026-secret"
 
 # ------------------------------------------------------------
 # Logging
