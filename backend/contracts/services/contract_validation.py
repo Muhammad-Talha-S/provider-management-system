@@ -119,12 +119,14 @@ def validate_sr_against_contract(
         exp = normalize_experience(r.get("experienceLevel"))
         tech = _norm(r.get("technology"))
 
+        '''
         if allowed_domains and dom and dom not in allowed_domains:
             raise ContractValidationError(f"Domain '{dom}' not allowed by contract.")
         if allowed_roles and role_name and role_name not in allowed_roles:
             raise ContractValidationError(f"Role '{role_name}' not allowed by contract.")
         if allowed_exps and exp and exp not in allowed_exps:
             raise ContractValidationError(f"Experience level '{exp}' not allowed by contract.")
+        '''
 
     deadline_days = int(accepted_map[sr_type].get("biddingDeadlineDays") or 0)
     cycles = int(accepted_map[sr_type].get("offerCycles") or 1)

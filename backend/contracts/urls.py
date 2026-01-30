@@ -5,6 +5,7 @@ from .views import (
     ContractOfferListCreateView,
     Group2SyncContractsView,
     Group2SetProviderStatusView,
+    Group2ContractOfferDecisionWebhookView
 )
 
 urlpatterns = [
@@ -17,4 +18,9 @@ urlpatterns = [
 
     # Group2 -> portal provider status updates
     path("group2/contracts/<str:id>/provider-status/", Group2SetProviderStatusView.as_view(), name="group2-provider-status"),
+    path(
+        "api/integrations/group2/contracts/<str:contract_id>/offer-decision/",
+        Group2ContractOfferDecisionWebhookView.as_view(),
+        name="group2-contract-offer-decision",
+    ),
 ]

@@ -1,0 +1,76 @@
+{
+    "id": 3,
+    "serviceRequest": {
+        "id": 39,
+        "requestNumber": "SR-K96BI8BI",
+        "title": "Document Management System",
+        "type": "MULTI",
+        "requestedByUsername": "John",
+        "requestedByRole": "PROJECT_MANAGER",
+        "projectId": "PRJ-NVS458",
+        "projectName": "Document Management System",
+        "contractId": "C003",
+        "contractSupplier": "IBM",
+        "startDate": "2026-01-23",
+        "endDate": "2027-02-17",
+        "performanceLocation": "Onsite",
+        "maxOffers": 5,
+        "maxAcceptedOffers": 1,
+        "requiredLanguages": [
+            "German"
+        ],
+        "mustHaveCriteria": [],
+        "niceToHaveCriteria": [
+            "Speak English"
+        ],
+        "taskDescription": "Develop an enterprise document management system...",
+        "furtherInformation": "Skills: Document Workflow Automation, Enterprise Applications, React, Java, Angular",
+        "status": "APPROVED_FOR_BIDDING",
+        "roles": [
+            {
+                "domain": "Blockchain",
+                "roleName": "Node Engineer",
+                "technology": "Node.js",
+                "experienceLevel": "Mid",
+                "manDays": 120,
+                "onsiteDays": 90
+            }
+        ],
+        "biddingCycleDays": 7,
+        "biddingStartAt": "2026-01-19T14:51:06.193384+00:00",
+        "biddingEndAt": "2026-01-26T14:51:06.193384+00:00",
+        "biddingActive": true
+    },
+    "specialists": [
+        {
+            "userId": "SP1002",
+            "name": "Jan Klein",
+            "materialNumber": "MAT-P001-0002",
+            "dailyRate": 690,
+            "travellingCost": 50,
+            "specialistCost": 87300,
+            "matchMustHaveCriteria": true,
+            "matchNiceToHaveCriteria": true,
+            "matchLanguageSkills": true
+        },
+        {
+            "userId": "SP1002",
+            "name": "Jan Klein",
+            "materialNumber": "MAT-P001-0002",
+            "dailyRate": 690,
+            "travellingCost": 50,
+            "specialistCost": 87300,
+            "matchMustHaveCriteria": true,
+            "matchNiceToHaveCriteria": true,
+            "matchLanguageSkills": true
+        }
+    ],
+    "totalCost": 87300,
+    "contractualRelationship": "Employee",
+    "subcontractorCompany": "",
+    "supplierName": "RheinTech Solutions GmbH",
+    "supplierRepresentative": "Lea Koch",
+    "offerStatus": "SUBMITTED",
+    "providerId": "P001",
+    "providerName": "RheinTech Solutions GmbH"
+}

@@ -200,7 +200,7 @@ GROUP3_CONNECTION_API_KEY = os.getenv("GROUP3_CONNECTION_API_KEY", "uni-project-
 GROUP3_API_KEY_HEADER = os.getenv("GROUP3_API_KEY_HEADER", "ServiceRequestbids3a")
 
 GROUP3_EXTENSION_DECISION_URL = os.getenv("GROUP3_EXTENSION_DECISION_URL", "")
-GROUP3_SUBSTITUTION_DECISION_URL = os.getenv("GROUP3_SUBSTITUTION_DECISION_URL", "")
+GROUP3_SUBSTITUTION_DECISION_URL = os.getenv("GROUP3_SUBSTITUTION_DECISION_URL", "https://servicemanagementsystem-1-2s7d.onrender.com/api/integrations/group3/offers/{offerId}/decision")
 
 # ------------------------------------------------------------
 # --- Group 2 Integration (Contracts) ---
