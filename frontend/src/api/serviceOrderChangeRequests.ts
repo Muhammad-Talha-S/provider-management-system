@@ -15,6 +15,7 @@ export type ServiceOrderChangeRequest = {
   createdBySystem: boolean;
   createdByUserId?: string | null;
   decidedByUserId?: string | null;
+  substitutionDate?: string | null;
 
   created_at: string;
   decided_at?: string | null;

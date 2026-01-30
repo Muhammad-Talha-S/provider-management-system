@@ -90,6 +90,17 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
 
         provider = user.provider
 
+        def ensure_provider_in_negotiation():
+            # If provider already ACTIVE, do not downgrade.
+            cps = ContractProviderStatus.objects.filter(contract=contract, provider=provider).first()
+            if cps and cps.status == "ACTIVE":
+                return
+            ContractProviderStatus.objects.update_or_create(
+                contract=contract,
+                provider=provider,
+                defaults={"status": "IN_NEGOTIATION", "note": "Offer created/submitted by provider."},
+            )
+
         # Try to derive provider email/name with best-effort
         provider_name = getattr(provider, "name", None) or getattr(provider, "provider_name", None) or str(provider.id)
         provider_email = (
@@ -111,6 +122,7 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
 
         # If DRAFT: store locally only, do not send to Group2
         if status_value == "DRAFT":
+            ensure_provider_in_negotiation()
             snapshot = contract.external_snapshot or {}
             ContractOffer.objects.create(
                 contract=contract,
@@ -138,7 +150,6 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
             raise ValidationError(f"Failed to reach Group2 offer endpoint: {e}")
 
         if resp.status_code >= 400:
-            # Bubble up error cleanly
             detail = None
             try:
                 detail = resp.json()
@@ -152,8 +163,9 @@ class ContractOfferListCreateView(generics.ListCreateAPIView):
         except Exception:
             group2_response = {"detail": "Group2 returned non-JSON response."}
 
-        snapshot = contract.external_snapshot or {}
+        ensure_provider_in_negotiation()
 
+        snapshot = contract.external_snapshot or {}
         ContractOffer.objects.create(
             contract=contract,
             provider=provider,
@@ -284,3 +296,115 @@ class Group2SetProviderStatusView(APIView):
         )
 
         return Response({"contractId": contract.id, "providerId": provider_id, "status": cps.status})
+    
+
+class Group2ContractOfferDecisionWebhookView(APIView):
+    """
+    Group2 → Group4 webhook when a contract offer decision is made.
+
+    POST /api/integrations/group2/contracts/{contract_id}/offer-decision/
+
+    Headers:
+      GROUP2-API-KEY: <API_KEY>
+
+    Body:
+    {
+      "provider": {
+        "id": "P001",
+        "name": "Acme IT Services GmbH",
+        "email": "contracts@acme-it.de"
+      },
+      "status": "ACCEPTED" | "REJECTED" | "IN_NEGOTIATION"
+    }
+    """
+
+    authentication_classes = [Group2ApiKeyAuthentication]
+    permission_classes = [AllowAny]
+
+    def post(self, request, contract_id: str):
+        data = request.data if isinstance(request.data, dict) else {}
+
+        provider_data = data.get("provider") or {}
+        provider_id = provider_data.get("id")
+        provider_name = provider_data.get("name")
+        provider_email = provider_data.get("email")
+
+        status_raw = str(data.get("status") or "").upper().strip()
+
+        if not provider_id:
+            raise ValidationError("provider.id is required")
+
+        if status_raw not in {"ACCEPTED", "REJECTED", "IN_NEGOTIATION"}:
+            raise ValidationError("Invalid status")
+
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            raise NotFound("Contract not found")
+
+        # Find latest submitted offer for this provider + contract
+        offer = (
+            ContractOffer.objects
+            .filter(contract=contract, provider_id=provider_id)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not offer:
+            raise NotFound("No contract offer found for this provider")
+
+        # ---- Update ContractOffer ----
+        offer.status = status_raw
+        offer.response = offer.response or {}
+        offer.response["group2_decision"] = {
+            "status": status_raw,
+            "provider": {
+                "id": provider_id,
+                "name": provider_name,
+                "email": provider_email,
+            },
+            "decidedAt": timezone.now().isoformat(),
+        }
+        offer.save(update_fields=["status", "response"])
+
+        # ---- Update Provider-specific Contract status ----
+        if status_raw == "ACCEPTED":
+            provider_status = "ACTIVE"
+        elif status_raw == "EXPIRED":
+            provider_status = "EXPIRED"
+        else:  # IN_NEGOTIATION
+            provider_status = "IN_NEGOTIATION"
+
+        cps, _ = ContractProviderStatus.objects.update_or_create(
+            contract=contract,
+            provider_id=provider_id,
+            defaults={
+                "status": provider_status,
+                "note": f"Updated by Group2 offer decision: {status_raw}",
+            },
+        )
+
+        # ---- Activity Log ----
+        log_activity(
+            actor="group2",
+            verb="contract_offer_decision",
+            target=f"Contract {contract.id}",
+            metadata={
+                "providerId": provider_id,
+                "status": status_raw,
+            },
+        )
+
+        return Response(
+            {
+                "contractId": contract.id,
+                "provider": {
+                    "id": provider_id,
+                    "name": provider_name,
+                    "email": provider_email,
+                },
+                "offerStatus": offer.status,
+                "providerContractStatus": cps.status,
+            },
+            status=200,
+        )

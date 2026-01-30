@@ -26,3 +26,18 @@ export async function syncContractsFromGroup2(access: string): Promise<{ upserte
   if (!res.ok) throw new Error(data?.detail || `Failed to sync contracts (${res.status})`);
   return data as { upserted: number; skipped: number };
 }
+
+export async function createContractOffer(
+  access: string,
+  contractId: string,
+  body: { proposedPricingRules: any; note?: string; status?: "DRAFT" | "SUBMITTED" }
+): Promise<any> {
+  const res = await authFetch(`/api/contracts/${encodeURIComponent(contractId)}/offers/`, access, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) throw new Error(data?.detail || `Failed to create contract offer (${res.status})`);
+  return data;
+}

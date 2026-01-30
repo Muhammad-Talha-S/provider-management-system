@@ -49,7 +49,8 @@ export const ContractDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>(); // contractId in URL
   const navigate = useNavigate();
 
-  const { tokens, currentProvider } = useApp();
+  // ✅ CHANGED: include currentUser
+  const { tokens, currentProvider, currentUser } = useApp();
   const access = tokens?.access || "";
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
@@ -91,7 +92,10 @@ export const ContractDetail: React.FC = () => {
   }, [cfg?.pricingRules?.maxDailyRates]);
 
   // Versions/documents structure can vary; we show best-effort
-  const versions = useMemo(() => safeArray<any>(contract?.versionsAndDocuments), [contract?.versionsAndDocuments]);
+  const versions = useMemo(
+    () => safeArray<any>(contract?.versionsAndDocuments),
+    [contract?.versionsAndDocuments]
+  );
 
   const latestVersion = useMemo(() => {
     if (!versions.length) return null;
@@ -126,6 +130,45 @@ export const ContractDetail: React.FC = () => {
   const awardedToMe = Boolean(contract.isAwardedToMyProvider);
   const myAwardStatus = contract.myProviderStatus?.status || null;
 
+  // ✅ NEW: Create-Offer button rules
+  const roleCanCreateOffer =
+    currentUser?.role === "Provider Admin" || currentUser?.role === "Contract Coordinator";
+
+  const offerDeadlinePassed = (() => {
+    if (!contract.offerDeadlineAt) return false;
+    const d = new Date(contract.offerDeadlineAt);
+    if (isNaN(d.getTime())) return false;
+    return d.getTime() < Date.now();
+  })();
+
+  const myProviderStatus = String(myAwardStatus || "").toUpperCase(); // e.g. IN_NEGOTIATION / ACTIVE / REJECTED / ...
+  const contractStatus = String(contract.status || "").toUpperCase(); // global: PUBLISHED/ACTIVE...
+
+  // providers can submit offers when contract is PUBLISHED (and deadline not passed)
+  const canCreateOffer =
+    roleCanCreateOffer &&
+    contractStatus === "PUBLISHED" &&
+    !offerDeadlinePassed &&
+    myProviderStatus !== "ACTIVE" &&
+    myProviderStatus !== "IN_NEGOTIATION";
+
+  const createOfferDisabledReason = (() => {
+    if (!roleCanCreateOffer) return "Only Provider Admin or Contract Coordinator can create contract offers.";
+    if (contractStatus !== "PUBLISHED") return "Offers can only be created while the contract is PUBLISHED.";
+    if (offerDeadlinePassed) return "Offer deadline has passed.";
+    if (myProviderStatus === "ACTIVE") return "This contract is already ACTIVE for your provider.";
+    if (myProviderStatus === "IN_NEGOTIATION") return "Offer already submitted (IN_NEGOTIATION).";
+    return "Offer cannot be created right now.";
+  })();
+
+  const onCreateOfferClick = () => {
+    if (!canCreateOffer) {
+      alert(createOfferDisabledReason);
+      return;
+    }
+    navigate(`/contract-offers/create?contractId=${encodeURIComponent(contract.contractId)}`);
+  };
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -158,21 +201,6 @@ export const ContractDetail: React.FC = () => {
           Contracts are published and awarded by Contract Management (Group 2).
         </p>
       </div>
-
-      {/* Award banner (isolation-safe) */}
-      {contract.isAwardedToMyProvider && (
-        <div className="rounded-lg border p-4 mb-6 bg-green-50 border-green-200">
-          <p className="text-sm text-green-900">
-            <strong>Award:</strong> This contract is awarded to <strong>your provider</strong>
-            {myAwardStatus ? ` (${myAwardStatus})` : ""}.
-          </p>
-          {contract.status === "ACTIVE" && (
-            <p className="text-xs text-green-700 mt-1">
-              Service Requests under this contract should be visible to your provider (if Group3 provides SRs for this contract).
-            </p>
-          )}
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
@@ -273,6 +301,9 @@ export const ContractDetail: React.FC = () => {
                     <Calendar size={16} className="text-gray-400" />
                     <p className="text-sm text-gray-900">{safeDateLabel(contract.offerDeadlineAt)}</p>
                   </div>
+                  {offerDeadlinePassed && (
+                    <p className="text-xs text-red-600 mt-1">Offer deadline has passed.</p>
+                  )}
                 </div>
 
                 <div>
@@ -331,9 +362,7 @@ export const ContractDetail: React.FC = () => {
                   <Settings size={20} className="text-green-600 mt-0.5" />
                   <div>
                     <p className="text-sm text-green-900">Active Contract</p>
-                    <p className="text-xs text-green-700 mt-1">
-                      This contract is currently active.
-                    </p>
+                    <p className="text-xs text-green-700 mt-1">This contract is currently active.</p>
                   </div>
                 </div>
               </div>
@@ -347,6 +376,33 @@ export const ContractDetail: React.FC = () => {
                 <span>{currentProvider?.name || "—"}</span>
               </div>
               <div className="text-xs text-gray-500 mt-1">{currentProvider?.id || ""}</div>
+            </div>
+
+            {/* ✅ NEW: Actions card (Create Contract Offer) */}
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h3 className="text-sm text-gray-900 mb-4">Actions</h3>
+
+              <button
+                type="button"
+                onClick={onCreateOfferClick}
+                className={`w-full px-4 py-3 rounded-lg transition-colors ${
+                  canCreateOffer
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                }`}
+              >
+                {myProviderStatus === "IN_NEGOTIATION"
+                  ? "Offer Submitted (In Negotiation)"
+                  : "Create Contract Offer"}
+              </button>
+
+              <p className="text-xs text-gray-500 mt-3">
+                You can only edit <strong>pricing rules</strong>. Currency stays the same.
+              </p>
+
+              {!canCreateOffer && (
+                <p className="text-xs text-gray-500 mt-2">{createOfferDisabledReason}</p>
+              )}
             </div>
 
             {/* Configuration Summary */}
@@ -614,9 +670,7 @@ export const ContractDetail: React.FC = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h2 className="text-lg text-gray-900 mb-2">Versions & Documents</h2>
-            <p className="text-sm text-gray-500">
-              Version history from Contract Management (Group 2)
-            </p>
+            <p className="text-sm text-gray-500">Version history from Contract Management (Group 2)</p>
           </div>
 
           {versions.length ? (
@@ -658,9 +712,7 @@ export const ContractDetail: React.FC = () => {
                           >
                             {d?.name || "Document"}
                           </a>
-                          <span className="text-xs text-gray-500">
-                            {d?.type ? `(${d.type})` : ""}
-                          </span>
+                          <span className="text-xs text-gray-500">{d?.type ? `(${d.type})` : ""}</span>
                         </div>
                       ))}
                     </div>

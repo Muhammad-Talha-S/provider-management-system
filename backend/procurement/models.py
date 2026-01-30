@@ -152,6 +152,9 @@ class ServiceOrderAssignment(models.Model):
     match_must_have_criteria = models.BooleanField(default=True)
     match_nice_to_have_criteria = models.BooleanField(default=True)
     match_language_skills = models.BooleanField(default=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -181,6 +184,9 @@ class ServiceOrderChangeRequest(models.Model):
 
     service_order = models.ForeignKey("procurement.ServiceOrder", on_delete=models.CASCADE, related_name="change_requests")
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="order_change_requests")
+    substitution_date = models.DateField(null=True, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
 
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Requested")

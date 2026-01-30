@@ -538,32 +538,19 @@ class ServiceOrderChangeRequestCreateSerializer(serializers.Serializer):
 
 
 class ServiceOrderChangeRequestDecisionSerializer(serializers.Serializer):
-    """
-    Provider decision on a change request.
-
-    Supports:
-    - Approve/Decline for both inbound (Group3) and outbound (PMS-created) CRs.
-    - For inbound Substitution (created_by_system=True), provider MUST select newSpecialistId when approving.
-    """
     decision = serializers.ChoiceField(choices=["Approve", "Decline"])
     providerResponseNote = serializers.CharField(required=False, allow_blank=True, default="")
-
-    # IMPORTANT: needed for inbound substitution approval
     newSpecialistId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate(self, attrs):
-        cr: ServiceOrderChangeRequest = self.context.get("cr")
-        req = self.context.get("request")
-
+        cr = self.context.get("cr")
         decision = attrs.get("decision")
         new_sid = (attrs.get("newSpecialistId") or "").strip()
 
-        # Only required for inbound substitution approvals
         if cr and cr.type == "Substitution" and cr.created_by_system and decision == "Approve":
             if not new_sid:
                 raise serializers.ValidationError({"newSpecialistId": "Replacement specialist is required to approve an inbound substitution."})
 
-            # Validate specialist belongs to same provider and is active Specialist
             ok = User.objects.filter(
                 id=new_sid,
                 provider_id=cr.provider_id,
@@ -575,23 +562,23 @@ class ServiceOrderChangeRequestDecisionSerializer(serializers.Serializer):
 
         return attrs
 
-    def apply_decision(self, cr: ServiceOrderChangeRequest, decided_by_user):
-        """
-        Applies decision + updates underlying ServiceOrder on Approve.
-        Idempotent: if CR not Requested, it returns unchanged.
-        """
+    def apply_decision(self, cr, decided_by_user):
         decision = self.validated_data["decision"]
         note = self.validated_data.get("providerResponseNote") or ""
         new_sid = (self.validated_data.get("newSpecialistId") or "").strip()
 
+        # idempotent
         if cr.status != "Requested":
-            return cr  # idempotent
+            return cr
 
-        # attach replacement specialist for inbound substitution approvals
+        order = cr.service_order  # ✅ define order FIRST
+
+        # If inbound substitution + approve, attach chosen replacement specialist
         if cr.type == "Substitution" and cr.created_by_system and decision == "Approve":
             if new_sid:
                 cr.new_specialist = User.objects.filter(id=new_sid).first()
 
+        # Save decision on CR first
         cr.decided_by_user = decided_by_user
         cr.provider_response_note = note
         cr.decided_at = timezone.now()
@@ -601,37 +588,53 @@ class ServiceOrderChangeRequestDecisionSerializer(serializers.Serializer):
         if cr.status != "Approved":
             return cr
 
-        # Apply changes to the order on approval
-        order = cr.service_order
-
+        # ---- Apply changes to the order on approval ----
         if cr.type == "Extension":
+            update_fields = []
             if cr.new_end_date:
                 order.end_date = cr.new_end_date
+                update_fields.append("end_date")
             if cr.additional_man_days is not None:
                 order.man_days = int(order.man_days or 0) + int(cr.additional_man_days or 0)
+                update_fields.append("man_days")
             if cr.new_total_cost is not None:
                 order.total_cost = cr.new_total_cost
-            order.save(update_fields=["end_date", "man_days", "total_cost"])
+                update_fields.append("total_cost")
+            if update_fields:
+                order.save(update_fields=update_fields)
+            return cr
 
         if cr.type == "Substitution":
-            # Replace FIRST assignment (simple deterministic rule)
-            first = order.assignments.select_related("specialist").first()
-            if first and cr.new_specialist:
-                old_daily = first.daily_rate
-                old_travel = first.travelling_cost
-                old_cost = first.specialist_cost
+            if not cr.new_specialist:
+                return cr
 
-                first.delete()
+            effective = cr.substitution_date or timezone.now().date()
 
-                ServiceOrderAssignment.objects.create(
-                    order=order,
-                    specialist=cr.new_specialist,
-                    daily_rate=old_daily,
-                    travelling_cost=old_travel,
-                    specialist_cost=old_cost,
-                    match_must_have_criteria=True,
-                    match_nice_to_have_criteria=True,
-                    match_language_skills=True,
-                )
+            # Old assignment: close it at effective date
+            old_assignment = order.assignments.select_related("specialist").order_by("created_at").first()
+            if old_assignment:
+                old_assignment.end_date = effective
+                old_assignment.save(update_fields=["end_date"])
+
+            # New assignment: start at effective date
+            # Copy commercial fields from old assignment if it exists
+            daily = old_assignment.daily_rate if old_assignment else 0
+            travel = old_assignment.travelling_cost if old_assignment else 0
+            cost = old_assignment.specialist_cost if old_assignment else 0
+
+            ServiceOrderAssignment.objects.create(
+                order=order,
+                specialist=cr.new_specialist,
+                daily_rate=daily,
+                travelling_cost=travel,
+                specialist_cost=cost,
+                match_must_have_criteria=True,
+                match_nice_to_have_criteria=True,
+                match_language_skills=True,
+                start_date=effective,
+                end_date=None,
+            )
+
+            return cr
 
         return cr

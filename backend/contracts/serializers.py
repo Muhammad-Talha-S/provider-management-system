@@ -108,11 +108,35 @@ class ContractOfferCreateSerializer(serializers.Serializer):
         if not isinstance(pr, dict):
             raise serializers.ValidationError("proposedPricingRules must be an object.")
 
-        # Minimal sanity checks (don’t over-validate, keep integration friendly)
         if "currency" not in pr:
             raise serializers.ValidationError("proposedPricingRules.currency is required.")
         if "maxDailyRates" not in pr or not isinstance(pr.get("maxDailyRates"), list):
             raise serializers.ValidationError("proposedPricingRules.maxDailyRates must be a list.")
+
+        # Enforce currency stays the same as original contract pricingRules (if present)
+        original_currency = None
+        try:
+            original_currency = (contract.config or {}).get("pricingRules", {}).get("currency")
+        except Exception:
+            original_currency = None
+
+        if original_currency and pr.get("currency") != original_currency:
+            raise serializers.ValidationError(
+                f"Currency must remain '{original_currency}' (same as original contract)."
+            )
+
+        # Minimal numeric sanity checks for maxDailyRate
+        for i, row in enumerate(pr.get("maxDailyRates") or []):
+            if not isinstance(row, dict):
+                raise serializers.ValidationError(f"maxDailyRates[{i}] must be an object.")
+            if "maxDailyRate" not in row:
+                raise serializers.ValidationError(f"maxDailyRates[{i}].maxDailyRate is required.")
+            try:
+                val = float(row.get("maxDailyRate"))
+            except Exception:
+                raise serializers.ValidationError(f"maxDailyRates[{i}].maxDailyRate must be numeric.")
+            if val < 0:
+                raise serializers.ValidationError(f"maxDailyRates[{i}].maxDailyRate must be >= 0.")
 
         return attrs
 

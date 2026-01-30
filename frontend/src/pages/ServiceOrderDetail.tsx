@@ -441,7 +441,6 @@ export const ServiceOrderDetail: React.FC = () => {
                               )}
                             </div>
                           )}
-
                           {cr.type === "Substitution" && (
                             <div className="mt-2 text-xs text-gray-600">
                               <div>
@@ -452,9 +451,15 @@ export const ServiceOrderDetail: React.FC = () => {
                                 New Specialist:{" "}
                                 <span className="text-gray-900">{cr.newSpecialistId || "-"}</span>
                               </div>
+
+                              {cr.substitutionDate && (
+                                <div>
+                                  Substitution Date:{" "}
+                                  <span className="text-gray-900">{cr.substitutionDate}</span>
+                                </div>
+                              )}
                             </div>
                           )}
-
                           {/* Inbound substitution approval needs selection */}
                           {canProviderAct && isPending && needsReplacementOnApprove && (
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">

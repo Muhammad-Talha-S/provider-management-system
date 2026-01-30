@@ -102,8 +102,6 @@ export const ContractsPage: React.FC = () => {
 
       <div className="grid gap-6">
         {sorted.map((c) => {
-          const awardedToMe = Boolean((c as any).isAwardedToMyProvider);
-
           const cfg = (c as any).allowedConfiguration;
           const acceptedTypesCount = Array.isArray(cfg?.acceptedServiceRequestTypes)
             ? cfg.acceptedServiceRequestTypes.filter((x: any) => x?.isAccepted).length
@@ -173,12 +171,7 @@ export const ContractsPage: React.FC = () => {
                   <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-line">{(c as any).scopeOfWork}</p>
                 </div>
               )}
-
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <div className="text-sm text-gray-500">
-                  {awardedToMe ? "Awarded to your provider" : "Visible to all providers"}
-                </div>
-
                 <Link to={`/contracts/${encodeURIComponent((c as any).contractId)}`} className="text-sm text-blue-600 hover:text-blue-700">
                   View Details →
                 </Link>
